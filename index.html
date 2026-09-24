@@ -6,6 +6,12 @@
   <meta name="theme-color" content="#fff8ef" />
   <title>みーつけた</title>
   <link rel="stylesheet" href="./styles.css" />
+  <style>
+    html[data-night-state="night"] .character { opacity: .58; filter: grayscale(.25); pointer-events: none; }
+    html[data-night-state="night"] .character-face { transform: rotate(8deg); }
+    html[data-night-state="night"] .sleep-message { display: block; }
+    html[data-night-state="night"] #characterMessage { display: none; }
+  </style>
 </head>
 <body>
   <main class="app">
@@ -37,5 +43,36 @@
   </main>
 
   <script type="module" src="./app.js"></script>
+  <script>
+    (() => {
+      const characterSelect = document.querySelector("#characterSelect");
+      const buttons = [...document.querySelectorAll(".character")];
+      const sleepMessage = document.querySelector(".sleep-message");
+      const isNight = (date = new Date()) => date.getHours() >= 21 || date.getHours() < 6;
+
+      function applyNightRule() {
+        const night = isNight();
+        document.documentElement.dataset.nightState = night ? "night" : "day";
+        if (!characterSelect.hidden && night) {
+          buttons.forEach((button) => { button.disabled = true; });
+          sleepMessage.textContent = "もう夜だから眠いよ。また明日ね。";
+        } else if (!night && document.documentElement.dataset.lightState !== "dark") {
+          buttons.forEach((button) => { button.disabled = false; });
+          sleepMessage.textContent = "暗いから、みんな眠くなっちゃったみたい。";
+        }
+      }
+
+      new MutationObserver(applyNightRule).observe(characterSelect, { attributes: true, attributeFilter: ["hidden"] });
+      window.addEventListener("light-state-change", applyNightRule);
+      document.addEventListener("click", (event) => {
+        if (isNight() && event.target.closest(".character")) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      }, true);
+      applyNightRule();
+      setInterval(applyNightRule, 60_000);
+    })();
+  </script>
 </body>
 </html>
