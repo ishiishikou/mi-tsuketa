@@ -4,17 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#fff8ef" />
-  <title>みーつけた - Camera PoC</title>
+  <title>みーつけた</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main class="app">
-    <section class="card">
+    <section class="card" id="welcomeCard">
       <p class="eyebrow">みーつけた</p>
-      <h1>お顔を映してね</h1>
-      <p id="message">「カメラをはじめる」を押すと、お顔を探します。</p>
+      <h1>かくれんぼしよう！</h1>
+      <p id="message">「カメラをはじめる」を押して、お顔を映してね。</p>
       <button id="startButton" type="button">カメラをはじめる</button>
       <p class="privacy">カメラ映像は端末内の判定だけに使い、サーバーへ送信しません。</p>
+    </section>
+
+    <section id="characterSelect" class="card character-select" aria-labelledby="characterTitle" hidden>
+      <p class="eyebrow">みーつけた！</p>
+      <h2 id="characterTitle">どの子とかくれんぼする？</h2>
+      <p id="characterMessage">いっしょに遊ぶ子をえらんでね。</p>
+      <div class="characters" role="list">
+        <button class="character" type="button" data-character="rabbit" role="listitem"><span class="character-face" aria-hidden="true">🐰</span><span>うさちゃん</span></button>
+        <button class="character" type="button" data-character="bear" role="listitem"><span class="character-face" aria-hidden="true">🐻</span><span>くまちゃん</span></button>
+        <button class="character" type="button" data-character="cat" role="listitem"><span class="character-face" aria-hidden="true">🐱</span><span>ねこちゃん</span></button>
+      </div>
+      <p class="sleep-message" aria-live="polite">暗いから、みんな眠くなっちゃったみたい。</p>
     </section>
 
     <aside id="cameraBubble" class="camera-bubble" aria-label="フロントカメラ">
