@@ -4,16 +4,19 @@ const video = document.querySelector("#camera");
 const startButton = document.querySelector("#startButton");
 const message = document.querySelector("#message");
 const faceBadge = document.querySelector("#faceBadge");
+const welcomeCard = document.querySelector("#welcomeCard");
+const characterSelect = document.querySelector("#characterSelect");
+const characterButtons = [...document.querySelectorAll(".character")];
 
 let faceLandmarker;
 let stream;
 let animationFrameId;
 let lastVideoTime = -1;
 let lastInferenceAt = 0;
+let faceFound = false;
+let preGameScreen = "welcome";
 const INFERENCE_INTERVAL_MS = 250;
 
-// MediaPipe eyeBlink blendshape scores approach 1 as the eyelid closes.
-// Keep a dead band between open/closed so borderline samples do not flap state.
 const EYE_CLOSED_SCORE = 0.55;
 const EYE_OPEN_SCORE = 0.25;
 const CLOSED_CONFIRM_MS = 500;
@@ -27,8 +30,6 @@ const eyeTracker = {
   rightBlink: null,
 };
 
-// Darkness is observed only while preparing the game. The threshold is deliberately
-// isolated here so it can be tuned from iPhone measurements without changing the UX.
 const LIGHT_SAMPLE_INTERVAL_MS = 500;
 const LIGHT_WINDOW_MS = 3000;
 const DARK_LUMA_THRESHOLD = 45;
@@ -45,7 +46,22 @@ const lightTracker = {
   state: "unknown",
 };
 
+function setCharacterButtonsDisabled(disabled) {
+  characterButtons.forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function maybeShowCharacterSelect() {
+  if (preGameScreen !== "welcome" || !faceFound || lightTracker.state === "unknown") return;
+  preGameScreen = "character-select";
+  welcomeCard.hidden = true;
+  characterSelect.hidden = false;
+  setCharacterButtonsDisabled(lightTracker.state === "dark");
+}
+
 function setFaceState(found) {
+  faceFound = found;
   faceBadge.dataset.state = found ? "found" : "missing";
   faceBadge.textContent = found ? "お顔みーつけた！" : "お顔をさがし中";
   message.textContent = found
@@ -53,6 +69,7 @@ function setFaceState(found) {
     : "お顔が見えるように、カメラを見てね。";
 
   if (!found) resetEyeTracker();
+  maybeShowCharacterSelect();
 }
 
 function resetEyeTracker() {
@@ -122,8 +139,6 @@ function measureBackgroundLuma() {
   let sum = 0;
   let count = 0;
 
-  // Ignore the central region where the child's face is most likely to be. This
-  // reduces false "bright" readings caused by the screen illuminating the face.
   for (let y = 0; y < LIGHT_CANVAS_HEIGHT; y += 2) {
     for (let x = 0; x < LIGHT_CANVAS_WIDTH; x += 2) {
       const inFaceZone = x >= 16 && x < 48 && y >= 8 && y < 40;
@@ -149,8 +164,6 @@ function updateLightState(now) {
   lightTracker.samples.push({ at: now, luma });
   lightTracker.samples = lightTracker.samples.filter((sample) => now - sample.at <= LIGHT_WINDOW_MS);
 
-  // Require a full observation window. A hand covering the camera for one frame
-  // therefore cannot immediately put the app into the dark state.
   if (lightTracker.samples.length < 5 || now - lightTracker.samples[0].at < LIGHT_WINDOW_MS - LIGHT_SAMPLE_INTERVAL_MS) return;
 
   const sorted = lightTracker.samples.map((sample) => sample.luma).sort((a, b) => a - b);
@@ -160,9 +173,11 @@ function updateLightState(now) {
 
   lightTracker.state = state;
   document.documentElement.dataset.lightState = state;
+  setCharacterButtonsDisabled(state === "dark");
   window.dispatchEvent(new CustomEvent("light-state-change", {
     detail: { state, medianLuma, confirmedAt: now },
   }));
+  maybeShowCharacterSelect();
 }
 
 function stopPreGameLightDetection() {
@@ -230,6 +245,11 @@ async function start() {
   message.textContent = "カメラを準備しているよ…";
   faceBadge.dataset.state = "idle";
   faceBadge.textContent = "準備中";
+  faceFound = false;
+  preGameScreen = "welcome";
+  welcomeCard.hidden = false;
+  characterSelect.hidden = true;
+  setCharacterButtonsDisabled(false);
   resetEyeTracker();
   lightTracker.active = true;
   lightTracker.lastSampleAt = 0;
@@ -238,7 +258,6 @@ async function start() {
   document.documentElement.dataset.lightState = "unknown";
 
   try {
-    // Model assets are downloaded, but video frames stay in this browser process.
     [faceLandmarker] = await Promise.all([createFaceLandmarker(), startCamera()]);
     message.textContent = "お顔をさがしているよ…";
     cancelAnimationFrame(animationFrameId);
@@ -254,10 +273,21 @@ async function start() {
   }
 }
 
-startButton.addEventListener("click", start);
+function chooseCharacter(event) {
+  const button = event.currentTarget;
+  if (lightTracker.state !== "light" || button.disabled) return;
 
-// The future game state machine can dispatch this when character selection ends.
-// From that point onward brightness changes must not interrupt play.
+  const character = button.dataset.character;
+  preGameScreen = "game";
+  characterSelect.hidden = true;
+  document.documentElement.dataset.character = character;
+  window.dispatchEvent(new CustomEvent("game-start", {
+    detail: { character, startedAt: performance.now() },
+  }));
+}
+
+startButton.addEventListener("click", start);
+characterButtons.forEach((button) => button.addEventListener("click", chooseCharacter));
 window.addEventListener("game-start", stopPreGameLightDetection);
 
 window.addEventListener("pagehide", () => {
