@@ -1,418 +1,398 @@
-import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/+esm";
-import { HideAndSeekGame } from "./game-core.mjs";
+import { HideAndSeekGame, PEEK_REACTION_MS } from "./game-core.mjs";
+import { EyeTracker, LightTracker, SENSOR_DEFAULTS, startMode } from "./sensing.mjs";
+import { CHARACTERS, NIGHT_MESSAGE, gamePresentation } from "./characters.mjs";
+import { VERSION } from "./release.mjs";
 
-const video = document.querySelector("#camera");
-const startButton = document.querySelector("#startButton");
-const message = document.querySelector("#message");
-const faceBadge = document.querySelector("#faceBadge");
-const welcomeCard = document.querySelector("#welcomeCard");
-const characterSelect = document.querySelector("#characterSelect");
+const $ = (id) => document.getElementById(id);
+const video = $("camera");
 const characterButtons = [...document.querySelectorAll(".character")];
-const gameCard = document.querySelector("#gameCard");
-const gameTitle = document.querySelector("#gameTitle");
-const gameInstruction = document.querySelector("#gameInstruction");
-const roundLabel = document.querySelector("#roundLabel");
-const secondsRemaining = document.querySelector("#secondsRemaining");
-const goalSeconds = document.querySelector("#goalSeconds");
-const gameProgress = document.querySelector("#gameProgress");
-const progressFill = document.querySelector("#progressFill");
-const gameCharacter = document.querySelector("#gameCharacter");
-const hidingChoices = document.querySelector("#hidingChoices");
-const hidingSpotButtons = [...document.querySelectorAll(".hiding-spot")];
-const guessFeedback = document.querySelector("#guessFeedback");
-const nextRoundButton = document.querySelector("#nextRoundButton");
-const endGameButton = document.querySelector("#endGameButton");
-const characterInfo = {
-  rabbit: { name: "うさちゃん", face: "🐰" },
-  bear: { name: "くまちゃん", face: "🐻" },
-  cat: { name: "ねこちゃん", face: "🐱" },
-};
+const spotButtons = [...document.querySelectorAll(".hiding-spot")];
+const eyeTracker = new EyeTracker();
+const lightTracker = new LightTracker();
+const lightCanvas = document.createElement("canvas");
+const lightContext = lightCanvas.getContext("2d", { willReadFrequently: true });
+const photoCanvas = $("peekCanvas");
 let game = null;
 let selectedCharacter = "rabbit";
-
-let faceLandmarker;
-let stream;
-let animationFrameId;
-let lastVideoTime = -1;
-let lastInferenceAt = 0;
+let screen = "welcome";
+let stream = null;
+let detector = null;
+let frameId = null;
+let sessionEpoch = 0;
+let starting = false;
+let needsResume = false;
 let faceFound = false;
-let preGameScreen = "welcome";
-const INFERENCE_INTERVAL_MS = 250;
+let lastVideoTime = -1;
+let lastInferenceAt = -Infinity;
+let lastPhotoId = null;
+let photoTimer = null;
+let sleepTapTimer = null;
+let lastLightAt = -Infinity;
+let displayedMode = null;
 
-const EYE_CLOSED_SCORE = 0.55;
-const EYE_OPEN_SCORE = 0.25;
-const CLOSED_CONFIRM_MS = 500;
-const OPEN_CONFIRM_MS = 750;
-
-const eyeTracker = {
-  state: "unknown",
-  candidate: null,
-  candidateSince: 0,
-  leftBlink: null,
-  rightBlink: null,
-};
-
-const LIGHT_SAMPLE_INTERVAL_MS = 500;
-const LIGHT_WINDOW_MS = 3000;
-const DARK_LUMA_THRESHOLD = 45;
-const LIGHT_CANVAS_WIDTH = 64;
-const LIGHT_CANVAS_HEIGHT = 48;
-const lightCanvas = document.createElement("canvas");
-lightCanvas.width = LIGHT_CANVAS_WIDTH;
-lightCanvas.height = LIGHT_CANVAS_HEIGHT;
-const lightContext = lightCanvas.getContext("2d", { willReadFrequently: true });
-const lightTracker = {
-  active: true,
-  lastSampleAt: 0,
-  samples: [],
-  state: "unknown",
-};
-
-function setCharacterButtonsDisabled(disabled) {
-  characterButtons.forEach((button) => {
-    button.disabled = disabled;
-  });
+function text(element, value) {
+  if (element.textContent !== String(value)) element.textContent = String(value);
 }
 
-function maybeShowCharacterSelect() {
-  if (preGameScreen !== "welcome" || !faceFound || lightTracker.state === "unknown") return;
-  preGameScreen = "character-select";
-  welcomeCard.hidden = true;
-  characterSelect.hidden = false;
-  setCharacterButtonsDisabled(lightTracker.state === "dark");
+function clearPhoto() {
+  clearTimeout(photoTimer);
+  photoTimer = null;
+  photoCanvas.width = 0;
+  photoCanvas.height = 0; // Erase backing pixels, not merely hide the element.
+  $("peekPhoto").hidden = true;
 }
 
-function setFaceState(found) {
-  const changed = faceFound !== found;
-  faceFound = found;
-  faceBadge.dataset.state = found ? "found" : "missing";
-  faceBadge.textContent = found ? "お顔みーつけた！" : "お顔をさがし中";
-  message.textContent = found
-    ? "みーつけた！ そのままお顔を映してね。"
-    : "お顔が見えるように、カメラを見てね。";
-
-  if (!found) resetEyeTracker();
-  if (changed && game) {
-    game.observe({ facePresent: found, eyeState: eyeTracker.state }, performance.now());
-    renderGame();
+function capturePeek(landmarks) {
+  clearPhoto();
+  if (document.hidden || !faceFound || video.readyState < 2 || !video.videoWidth) return;
+  const xs = landmarks.map(p => p.x);
+  const ys = landmarks.map(p => p.y);
+  const left = Math.max(0, Math.min(...xs) - 0.08);
+  const top = Math.max(0, Math.min(...ys) - 0.12);
+  const right = Math.min(1, Math.max(...xs) + 0.08);
+  const bottom = Math.min(1, Math.max(...ys) + 0.08);
+  const width = (right - left) * video.videoWidth;
+  const height = (bottom - top) * video.videoHeight;
+  if (width <= 0 || height <= 0) return;
+  photoCanvas.width = Math.max(1, Math.round(240 * width / Math.max(width, height)));
+  photoCanvas.height = Math.max(1, Math.round(240 * height / Math.max(width, height)));
+  const context = photoCanvas.getContext("2d");
+  if (!context) return clearPhoto();
+  try {
+    context.drawImage(video, left * video.videoWidth, top * video.videoHeight,
+      width, height, 0, 0, photoCanvas.width, photoCanvas.height);
+    $("peekPhoto").hidden = false;
+    photoTimer = setTimeout(clearPhoto, PEEK_REACTION_MS);
+  } catch {
+    clearPhoto(); // The reaction still works if a frame cannot be copied.
   }
-  maybeShowCharacterSelect();
 }
 
-function resetEyeTracker() {
-  eyeTracker.state = "unknown";
-  eyeTracker.candidate = null;
-  eyeTracker.candidateSince = 0;
-  eyeTracker.leftBlink = null;
-  eyeTracker.rightBlink = null;
-  faceBadge.dataset.eyeState = "unknown";
-}
-
-function getBlendshapeScore(categories, name) {
-  return categories.find((category) => category.categoryName === name)?.score ?? null;
-}
-
-function classifyEyeSample(leftBlink, rightBlink) {
-  if (leftBlink === null || rightBlink === null) return null;
-  if (leftBlink >= EYE_CLOSED_SCORE && rightBlink >= EYE_CLOSED_SCORE) return "closed";
-  if (leftBlink <= EYE_OPEN_SCORE && rightBlink <= EYE_OPEN_SCORE) return "open";
-  return null;
-}
-
-function updateEyeState(result, now) {
-  const categories = result.faceBlendshapes?.[0]?.categories;
-  if (!categories) {
-    resetEyeTracker();
-    return;
-  }
-
-  const leftBlink = getBlendshapeScore(categories, "eyeBlinkLeft");
-  const rightBlink = getBlendshapeScore(categories, "eyeBlinkRight");
-  eyeTracker.leftBlink = leftBlink;
-  eyeTracker.rightBlink = rightBlink;
-
-  const candidate = classifyEyeSample(leftBlink, rightBlink);
-  if (!candidate) {
-    eyeTracker.candidate = null;
-    eyeTracker.candidateSince = 0;
-    return;
-  }
-
-  if (candidate !== eyeTracker.candidate) {
-    eyeTracker.candidate = candidate;
-    eyeTracker.candidateSince = now;
-    return;
-  }
-
-  const requiredMs = candidate === "closed" ? CLOSED_CONFIRM_MS : OPEN_CONFIRM_MS;
-  if (candidate === eyeTracker.state || now - eyeTracker.candidateSince < requiredMs) return;
-
-  eyeTracker.state = candidate;
-  faceBadge.dataset.eyeState = candidate;
-  window.dispatchEvent(new CustomEvent("eye-state-change", {
-    detail: {
-      state: candidate,
-      leftBlink,
-      rightBlink,
-      confirmedAt: now,
-    },
-  }));
-}
-
-function measureBackgroundLuma() {
+function measureLight(landmarks) {
   if (!lightContext) return null;
-  lightContext.drawImage(video, 0, 0, LIGHT_CANVAS_WIDTH, LIGHT_CANVAS_HEIGHT);
-  const { data } = lightContext.getImageData(0, 0, LIGHT_CANVAS_WIDTH, LIGHT_CANVAS_HEIGHT);
+  lightCanvas.width = 64;
+  lightCanvas.height = 48;
+  lightContext.drawImage(video, 0, 0, 64, 48);
+  const pixels = lightContext.getImageData(0, 0, 64, 48).data;
+  const xs = landmarks?.map(p => p.x) ?? [0.25, 0.75];
+  const ys = landmarks?.map(p => p.y) ?? [0.16, 0.84];
+  const bounds = [Math.min(...xs) - 0.08, Math.max(...xs) + 0.08,
+    Math.min(...ys) - 0.08, Math.max(...ys) + 0.08];
   let sum = 0;
   let count = 0;
-
-  for (let y = 0; y < LIGHT_CANVAS_HEIGHT; y += 2) {
-    for (let x = 0; x < LIGHT_CANVAS_WIDTH; x += 2) {
-      const inFaceZone = x >= 16 && x < 48 && y >= 8 && y < 40;
-      if (inFaceZone) continue;
-      const offset = (y * LIGHT_CANVAS_WIDTH + x) * 4;
-      const r = data[offset];
-      const g = data[offset + 1];
-      const b = data[offset + 2];
-      sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      count += 1;
+  for (let y = 0; y < 48; y += 2) {
+    for (let x = 0; x < 64; x += 2) {
+      if (x / 64 >= bounds[0] && x / 64 <= bounds[1] &&
+          y / 48 >= bounds[2] && y / 48 <= bounds[3]) continue;
+      const i = (y * 64 + x) * 4;
+      sum += pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722;
+      count++;
     }
   }
-
+  lightCanvas.width = 0;
+  lightCanvas.height = 0;
   return count ? sum / count : null;
 }
 
-function updateLightState(now) {
-  if (!lightTracker.active || now - lightTracker.lastSampleAt < LIGHT_SAMPLE_INTERVAL_MS) return;
-  lightTracker.lastSampleAt = now;
-  const luma = measureBackgroundLuma();
-  if (luma === null) return;
-
-  lightTracker.samples.push({ at: now, luma });
-  lightTracker.samples = lightTracker.samples.filter((sample) => now - sample.at <= LIGHT_WINDOW_MS);
-
-  if (lightTracker.samples.length < 5 || now - lightTracker.samples[0].at < LIGHT_WINDOW_MS - LIGHT_SAMPLE_INTERVAL_MS) return;
-
-  const sorted = lightTracker.samples.map((sample) => sample.luma).sort((a, b) => a - b);
-  const medianLuma = sorted[Math.floor(sorted.length / 2)];
-  const state = medianLuma < DARK_LUMA_THRESHOLD ? "dark" : "light";
-  if (state === lightTracker.state) return;
-
-  lightTracker.state = state;
-  document.documentElement.dataset.lightState = state;
-  setCharacterButtonsDisabled(state === "dark");
-  window.dispatchEvent(new CustomEvent("light-state-change", {
-    detail: { state, medianLuma, confirmedAt: now },
-  }));
-  maybeShowCharacterSelect();
+function faceStatus(found) {
+  faceFound = found;
+  $("faceBadge").dataset.state = found ? "found" : "missing";
+  text($("faceBadge"), found ? "お顔みーつけた！" : "お顔をうつしてね");
 }
 
-function stopPreGameLightDetection() {
-  lightTracker.active = false;
-  lightTracker.samples = [];
+function applyStartMode() {
+  const mode = startMode(lightTracker.state);
+  document.documentElement.dataset.startMode = mode;
+  if (screen === "select") {
+    text($("characterTitle"), mode === "night" || mode === "dark" ? "みんな おやすみ中" : "どの子と あそぶ？");
+    if (displayedMode !== mode) {
+      text($("sleepMessage"), mode === "night" ? NIGHT_MESSAGE : "暗いから、みんな眠くなっちゃったみたい。");
+      displayedMode = mode;
+    }
+  }
+  // Sleeping characters stay tappable for their response; chooseCharacter enforces the gate.
+  characterButtons.forEach(button => { button.disabled = starting || needsResume; });
 }
 
-async function createFaceLandmarker() {
-  const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm"
-  );
+function render() {
+  $("welcomeCard").hidden = screen !== "welcome";
+  $("characterSelect").hidden = screen !== "select";
+  $("gameCard").hidden = screen !== "game";
+  $("cameraBubble").hidden = !stream;
+  $("resumePanel").hidden = !needsResume;
+  $("resumeButton").disabled = starting;
+  $("startButton").disabled = starting || !!stream || needsResume;
+  $("stopButton").hidden = !stream && !game && !starting && !needsResume;
+  $("settingsFields").disabled = !!stream || starting || !!game || needsResume;
+  applyStartMode();
+  if (!game) return;
+  const info = CHARACTERS[selectedCharacter];
+  const view = gamePresentation(game, selectedCharacter);
+  $("gameCard").dataset.phase = game.phase;
+  $("gameCard").dataset.motion = view.motion;
+  $("gameCard").dataset.quiet = String(Boolean(view.quiet));
+  text($("roundLabel"), `${game.roundIndex + 1}かいめ`);
+  text($("gameTitle"), `${info.name}と かくれんぼ`);
+  text($("gameInstruction"), view.text);
+  text($("secondsRemaining"), game.remainingSeconds);
+  text($("goalSeconds"), game.targetMs / 1000);
+  text($("gameCharacter").firstElementChild, info.face);
+  const progress = Math.min(1, game.elapsedMs / game.targetMs);
+  $("progressFill").style.width = `${progress * 100}%`;
+  $("gameProgress").setAttribute("aria-valuemax", String(game.targetMs / 1000));
+  $("gameProgress").setAttribute("aria-valuenow", String(Math.floor(game.elapsedMs / 1000)));
+  $("gameProgress").setAttribute("aria-valuetext", `あと ${game.remainingSeconds}びょう`);
+  $("gameCharacter").style.setProperty("--hide-progress", progress);
+  $("hidingChoices").hidden = game.phase !== "seeking";
+  for (const button of spotButtons) {
+    const tried = game.triedSpots.has(button.dataset.spot);
+    button.disabled = tried || !game.active || !game.facePresent || game.signalStale;
+    button.dataset.tried = String(tried);
+  }
+  $("nextRoundButton").hidden = game.phase !== "found";
+  $("nextRoundButton").disabled = !game.active;
+  $("restMessage").hidden = game.phase !== "resting";
+  text($("guessFeedback"), game.phase === "found" ? "もういっかい あそぶ？" :
+    game.phase === "seeking" && game.wrongGuess ? "そこには いないみたい。ほかを さがそう！" : "");
+  if (game.reaction?.kind !== "peek" || !game.facePresent || !game.active) clearPhoto();
+}
 
-  return FaceLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
-      delegate: "GPU",
-    },
-    runningMode: "VIDEO",
-    numFaces: 1,
-    outputFaceBlendshapes: true,
-    minFaceDetectionConfidence: 0.5,
-    minFacePresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-  });
+async function createDetector() {
+  const { FaceLandmarker, FilesetResolver } = await import("./vendor/vision_bundle.mjs");
+  const vision = await FilesetResolver.forVisionTasks(new URL("./vendor/wasm", import.meta.url).href);
+  const options = {
+    baseOptions: { modelAssetPath: new URL("./vendor/face_landmarker.task", import.meta.url).href, delegate: "GPU" },
+    runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true,
+    minFaceDetectionConfidence: 0.5, minFacePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+  };
+  try { return await FaceLandmarker.createFromOptions(vision, options); }
+  catch {
+    return FaceLandmarker.createFromOptions(vision, { ...options, baseOptions: { ...options.baseOptions, delegate: "CPU" } });
+  }
+}
+
+function releaseResources() {
+  cancelAnimationFrame(frameId);
+  frameId = null;
+  stream?.getTracks().forEach(track => track.stop());
+  stream = null;
+  video.srcObject = null;
+  detector?.close();
+  detector = null;
+  faceFound = false;
+  eyeTracker.reset();
+  lightCanvas.width = 0;
+  lightCanvas.height = 0;
+  clearPhoto();
+}
+
+function suspend() {
+  if (!stream && !starting && !game) return;
+  ++sessionEpoch;
+  starting = false;
+  game?.suspend();
+  releaseResources();
+  needsResume = game?.phase !== "resting";
+  render();
 }
 
 async function startCamera() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("このブラウザではカメラを利用できません。");
+  if (starting || document.hidden) return;
+  const epoch = ++sessionEpoch;
+  starting = true;
+  render();
+  text($("message"), "お顔をうつしてね。いっしょに あそぶ じゅんび中…");
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("unsupported-camera");
+    const incoming = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } });
+    if (epoch !== sessionEpoch) {
+      incoming.getTracks().forEach(track => track.stop());
+      return;
+    }
+    stream = incoming;
+    video.srcObject = stream;
+    render();
+    await video.play();
+    if (epoch !== sessionEpoch) return;
+    const incomingDetector = await createDetector();
+    if (epoch !== sessionEpoch) { incomingDetector.close(); return; }
+    detector = incomingDetector;
+    stream.getVideoTracks().forEach(track => {
+      track.addEventListener("ended", () => { if (epoch === sessionEpoch) suspend(); });
+      track.addEventListener("mute", () => { if (epoch === sessionEpoch) suspend(); });
+    });
+    eyeTracker.reset();
+    lastVideoTime = -1;
+    lastInferenceAt = -Infinity;
+    lastLightAt = -Infinity;
+    if (!game) lightTracker.reset();
+    game?.resume();
+    needsResume = false;
+    frameId = requestAnimationFrame(detectLoop);
+  } catch (error) {
+    if (epoch !== sessionEpoch) return;
+    releaseResources();
+    game?.suspend();
+    needsResume = Boolean(game) || screen === "select";
+    const reason = error?.name === "NotAllowedError" ? "カメラを許可すると あそべます。Safariのカメラ設定を確認してね。" :
+      !navigator.onLine ? "はじめの準備には インターネットが必要です。つないで もう一度ためしてね。" :
+      "カメラを始められませんでした。ほかのカメラアプリを閉じて、もう一度ためしてね。";
+    text($("message"), reason);
+    text($("resumeMessage"), reason);
+  } finally {
+    if (epoch === sessionEpoch) { starting = false; render(); }
   }
-
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {
-      facingMode: "user",
-      width: { ideal: 640 },
-      height: { ideal: 480 },
-    },
-  });
-  video.srcObject = stream;
-  await video.play();
 }
 
 function detectLoop(now) {
-  if (
-    faceLandmarker &&
-    video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-    video.currentTime !== lastVideoTime &&
-    now - lastInferenceAt >= INFERENCE_INTERVAL_MS
-  ) {
-    lastVideoTime = video.currentTime;
-    lastInferenceAt = now;
-    const result = faceLandmarker.detectForVideo(video, now);
-    const found = result.faceLandmarks.length > 0;
-    setFaceState(found);
-    if (found) updateEyeState(result, now);
-    updateLightState(now);
-  }
-  if (game) {
-    game.tick(now, !document.hidden);
-    renderGame();
-  }
-  animationFrameId = requestAnimationFrame(detectLoop);
-}
-
-async function start() {
-  startButton.disabled = true;
-  message.textContent = "カメラを準備しているよ…";
-  faceBadge.dataset.state = "idle";
-  faceBadge.textContent = "準備中";
-  faceFound = false;
-  game = null;
-  gameCard.hidden = true;
-  preGameScreen = "welcome";
-  welcomeCard.hidden = false;
-  characterSelect.hidden = true;
-  setCharacterButtonsDisabled(false);
-  resetEyeTracker();
-  lightTracker.active = true;
-  lightTracker.lastSampleAt = 0;
-  lightTracker.samples = [];
-  lightTracker.state = "unknown";
-  document.documentElement.dataset.lightState = "unknown";
-
+  if (document.hidden || !detector || !stream) return;
   try {
-    [faceLandmarker] = await Promise.all([createFaceLandmarker(), startCamera()]);
-    message.textContent = "お顔をさがしているよ…";
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = requestAnimationFrame(detectLoop);
-  } catch (error) {
-    console.error(error);
-    message.textContent = error?.name === "NotAllowedError"
-      ? "カメラの許可が必要です。Safariの設定を確認してね。"
-      : "カメラを始められませんでした。もう一度ためしてね。";
-    faceBadge.dataset.state = "missing";
-    faceBadge.textContent = "カメラ停止";
-    startButton.disabled = false;
+    if (video.readyState >= 2 && video.currentTime !== lastVideoTime &&
+        now - lastInferenceAt >= SENSOR_DEFAULTS.inferenceMs) {
+      lastVideoTime = video.currentTime;
+      lastInferenceAt = now;
+      const result = detector.detectForVideo(video, now);
+      const landmarks = result.faceLandmarks?.[0];
+      const found = Boolean(landmarks?.length);
+      faceStatus(found);
+      if (found) {
+        const categories = result.faceBlendshapes?.[0]?.categories ?? [];
+        const score = name => categories.find(c => c.categoryName === name)?.score ?? null;
+        eyeTracker.update(score("eyeBlinkLeft"), score("eyeBlinkRight"), now);
+      } else {
+        eyeTracker.reset();
+        clearPhoto();
+      }
+      if (lightTracker.active && now - lastLightAt >= 500) {
+        lastLightAt = now;
+        lightTracker.observe(measureLight(landmarks), now);
+      }
+      if (!game && screen === "welcome") {
+        text($("message"), found ? "みーつけた！ そのままで まっていてね。" : "お顔が わくに入るように カメラを見てね。");
+        if (found && lightTracker.state !== "unknown") screen = "select";
+      }
+      game?.observe({ facePresent: found, eyeState: eyeTracker.state, rawEyeState: eyeTracker.rawState }, now);
+      if (game?.reaction?.kind === "peek" && game.reaction.id !== lastPhotoId) {
+        lastPhotoId = game.reaction.id;
+        capturePeek(landmarks);
+      }
+      if ($("parentInfo").open) {
+        text($("diagnostics"), `顔: ${found ? "あり" : "なし"} / 目: ${eyeTracker.state}\n左: ${eyeTracker.leftBlink?.toFixed(2) ?? "—"} / 右: ${eyeTracker.rightBlink?.toFixed(2) ?? "—"}\n背景の明るさ: ${lightTracker.medianLuma?.toFixed(0) ?? "準備中"} / ${lightTracker.active ? "開始前の確認中" : "ゲーム中は確認停止"}`);
+      }
+    }
+    game?.tick(now);
+    render();
+    if (game?.phase === "resting") {
+      releaseResources();
+      render();
+      return;
+    }
+    frameId = requestAnimationFrame(detectLoop);
+  } catch {
+    suspend();
+    text($("resumeMessage"), "カメラがひと休みしています。つづきから はじめよう。");
   }
 }
 
 function chooseCharacter(event) {
+  if (screen !== "select" || starting || needsResume || !stream) return;
   const button = event.currentTarget;
-  if (lightTracker.state !== "light" ||
-      document.documentElement.dataset.nightState === "night" || button.disabled) return;
-
-  const character = button.dataset.character;
-  preGameScreen = "game";
-  characterSelect.hidden = true;
-  document.documentElement.dataset.character = character;
-  selectedCharacter = character;
-  game = new HideAndSeekGame();
-  game.observe({ facePresent: faceFound, eyeState: eyeTracker.state }, performance.now());
-  gameCard.hidden = false;
-  renderGame();
-  window.dispatchEvent(new CustomEvent("game-start", {
-    detail: { character, startedAt: performance.now() },
-  }));
-}
-
-
-function writeText(element, text) {
-  if (element.textContent !== String(text)) element.textContent = String(text);
-}
-
-function renderGame() {
-  if (!game) return;
-  const phase = game.phase;
-  const info = characterInfo[selectedCharacter];
-  gameCard.dataset.phase = phase;
-  writeText(gameTitle, info.name + " と かくれんぼ！");
-  writeText(roundLabel, (game.roundIndex + 1) + "かいめ");
-  writeText(goalSeconds, game.targetMs / 1000);
-  writeText(secondsRemaining, game.remainingSeconds);
-  writeText(gameCharacter, info.face);
-  const ratio = Math.min(100, (game.elapsedMs / game.targetMs) * 100);
-  progressFill.style.width = ratio + "%";
-  gameProgress.setAttribute("aria-valuemax", String(game.targetMs / 1000));
-  gameProgress.setAttribute("aria-valuenow", String(Math.floor(game.elapsedMs / 1000)));
-
-  let instruction = "めをとじてね。かくれんぼをはじめよう！";
-  if (!game.facePresent) {
-    instruction = "おかおが みえないよ。カメラをみてね。";
-  } else if (phase === "counting") {
-    instruction = "そのまま めをとじていてね。";
-  } else if (phase === "waiting-to-seek") {
-    instruction = "…"; // Quiet; avoid stimulating a child who has kept their eyes closed.
-  } else if (phase === "seeking") {
-    instruction = "めをあけて、どこにかくれたか さがしてね！";
-  } else if (phase === "found") {
-    instruction = "みーつけた！ すごいね！";
+  const mode = startMode(lightTracker.state); // Check the actual click time, including 21:00.
+  applyStartMode();
+  if (mode === "night" || mode === "dark") {
+    text($("sleepMessage"), mode === "night" ? NIGHT_MESSAGE : CHARACTERS[button.dataset.character].dark);
+    clearTimeout(sleepTapTimer);
+    characterButtons.forEach(b => b.classList.remove("sleep-tap"));
+    button.classList.add("sleep-tap");
+    sleepTapTimer = setTimeout(() => button.classList.remove("sleep-tap"), 700);
+    return;
   }
-  writeText(gameInstruction, instruction);
-  hidingChoices.hidden = phase !== "seeking";
-  hidingSpotButtons.forEach((button) => { button.disabled = !game.facePresent; });
-  nextRoundButton.hidden = phase !== "found";
-  writeText(guessFeedback,
-    phase === "found" ? "つぎは すこし ながく めをとじてみよう！" :
-    phase === "seeking" && game.wrongGuess ? "そこじゃないよ。もういっかい！" : "");
+  if (mode !== "light" || !faceFound) {
+    text($("characterMessage"), "お顔を カメラに うつしてね。");
+    return;
+  }
+  selectedCharacter = button.dataset.character;
+  screen = "game";
+  game = new HideAndSeekGame();
+  lastPhotoId = null;
+  clearPhoto();
+  eyeTracker.reset();
+  lightTracker.stop();
+  $("parentInfo").open = false;
+  render();
 }
 
 function endGame() {
-  cancelAnimationFrame(animationFrameId);
-  stream?.getTracks().forEach((track) => track.stop());
-  faceLandmarker?.close();
-  stream = null;
-  faceLandmarker = null;
-  video.srcObject = null;
+  ++sessionEpoch;
+  starting = false;
+  needsResume = false;
+  releaseResources();
   game = null;
-  faceFound = false;
-  preGameScreen = "welcome";
-  gameCard.hidden = true;
-  characterSelect.hidden = true;
-  welcomeCard.hidden = false;
-  startButton.disabled = false;
-  writeText(message, "「カメラをはじめる」を押して、お顔を映してね。");
-  faceBadge.dataset.state = "idle";
-  writeText(faceBadge, "準備前");
-  resetEyeTracker();
+  screen = "welcome";
+  lastPhotoId = null;
+  lightTracker.reset();
+  displayedMode = null;
+  text($("message"), "「あそぶ」を押して、お顔をうつしてね。");
+  text($("resumeMessage"), "おかえり！ のこりの時間から あそべるよ。");
+  render();
 }
 
-startButton.addEventListener("click", start);
-characterButtons.forEach((button) => button.addEventListener("click", chooseCharacter));
-window.addEventListener("game-start", stopPreGameLightDetection);
-window.addEventListener("eye-state-change", (event) => {
-  if (!game) return;
-  game.observe({ facePresent: faceFound, eyeState: event.detail.state }, performance.now());
-  renderGame();
+$("startButton").addEventListener("click", startCamera);
+$("resumeButton").addEventListener("click", startCamera);
+$("stopButton").addEventListener("click", endGame);
+$("endGameButton").addEventListener("click", endGame);
+characterButtons.forEach(button => button.addEventListener("click", chooseCharacter));
+spotButtons.forEach(button => button.addEventListener("click", () => { game?.guess(button.dataset.spot); render(); }));
+$("nextRoundButton").addEventListener("click", () => {
+  if (game?.nextRound()) { clearPhoto(); eyeTracker.reset(); render(); }
 });
-hidingSpotButtons.forEach((button) => button.addEventListener("click", () => {
-  if (game) {
-    game.guess(button.dataset.spot);
-    renderGame();
-  }
-}));
-nextRoundButton.addEventListener("click", () => {
-  if (game?.nextRound(performance.now())) renderGame();
-});
-endGameButton.addEventListener("click", endGame);
 document.addEventListener("visibilitychange", () => {
-  if (game) {
-    game.tick(performance.now(), false);
-    renderGame();
+  if (document.hidden) suspend();
+  else { applyStartMode(); render(); }
+});
+window.addEventListener("pagehide", suspend);
+window.addEventListener("pageshow", () => render());
+setInterval(applyStartMode, 1000);
+$("settingsForm").addEventListener("change", () => {
+  if (stream || starting || game) return;
+  if (!$("settingsForm").reportValidity()) return;
+  const closed = Number($("closedThreshold").value);
+  const open = Number($("openThreshold").value);
+  if (open >= closed) {
+    text($("settingsMessage"), "開眼の値は 閉眼の値より小さくしてください。");
+    $("openThreshold").value = eyeTracker.config.openScore;
+    $("closedThreshold").value = eyeTracker.config.closedScore;
+    return;
   }
+  eyeTracker.config.closedScore = closed;
+  eyeTracker.config.openScore = open;
+  lightTracker.threshold = Number($("darkThreshold").value);
+  text($("settingsMessage"), "この画面を閉じるまで有効です。次の「あそぶ」から適用します。");
 });
+$("resetSettings").addEventListener("click", () => {
+  if (stream || starting || game) return;
+  eyeTracker.config = { ...SENSOR_DEFAULTS };
+  lightTracker.threshold = SENSOR_DEFAULTS.darkLuma;
+  $("settingsForm").reset();
+  text($("settingsMessage"), "標準の値に戻しました。");
+});
+text($("appVersion"), VERSION);
+render();
 
-window.addEventListener("pagehide", () => {
-  cancelAnimationFrame(animationFrameId);
-  stream?.getTracks().forEach((track) => track.stop());
-  faceLandmarker?.close();
-});
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").then(registration => {
+    if (registration.waiting) text($("offlineStatus"), "新しい版の準備ができました。あそび終えたらアプリを閉じて開き直してね。");
+    registration.addEventListener("updatefound", () => {
+      const worker = registration.installing;
+      worker?.addEventListener("statechange", () => {
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          text($("offlineStatus"), "新しい版があります。あそび終えたらアプリを閉じて開き直してね。");
+        }
+      });
+    });
+    return navigator.serviceWorker.ready;
+  }).then(() => {
+    if (!$("offlineStatus").textContent.includes("新しい")) text($("offlineStatus"), "オフラインの準備ができました。");
+  }).catch(() => text($("offlineStatus"), "オフラインの準備ができていません。オンラインであそんでね。"));
+}
