@@ -1,0 +1,25 @@
+name: Test hide-and-seek game
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  game-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run state machine tests
+        run: node --test tests/*.test.mjs
+      - name: Check browser entry syntax
+        run: |
+          node --check game-core.mjs
+          node --check app.js
