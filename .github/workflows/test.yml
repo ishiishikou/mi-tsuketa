@@ -22,4 +22,4 @@ jobs:
       - name: Check browser entry syntax
         run: |
           node --check game-core.mjs
-          node --check app.js
+          node --input-type=module --check < app.js
