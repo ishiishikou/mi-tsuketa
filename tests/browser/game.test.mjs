@@ -78,10 +78,15 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
   await page.goto(base);
   return { browser, context, page, errors, requests };
 }
-async function startAndChoose(page, character = "rabbit", screenshotName = null) {
+async function startSyntheticCamera(page) {
+  const previousInferences = await page.evaluate(() => window.__inferences ?? 0);
   await page.locator("#startButton").click();
-  await page.waitForFunction(() => window.__inferences > 0);
+  // A previous session's counter cannot prove that the new async video/model is ready.
+  await page.waitForFunction(previous => window.__inferences > previous, previousInferences);
   await page.clock.runFor(3500);
+}
+async function startAndChoose(page, character = "rabbit", screenshotName = null) {
+  await startSyntheticCamera(page);
   if (screenshotName) await page.screenshot({ path: `test-results/${screenshotName}-select.png` });
   await page.locator(`[data-character="${character}"]`).click();
   assert.equal(await page.locator("#gameCard").isVisible(), true);
@@ -198,9 +203,7 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       await page.locator("#gameCharacter").click();
       assert.match(await page.locator("#gameInstruction").innerText(), /ぽかぽか/);
       await page.locator("#endGameButton").click();
-      await page.locator("#startButton").click();
-      await page.waitForFunction(() => window.__inferences > 0);
-      await page.clock.runFor(3500);
+      await startSyntheticCamera(page);
       for (const button of await page.locator(".character").all()) {
         const box = await button.boundingBox();
         assert.ok(box.width >= 44 && box.height >= 44);
