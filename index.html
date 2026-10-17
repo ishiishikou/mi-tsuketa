@@ -35,6 +35,31 @@
       <p class="sleep-message" aria-live="polite">暗いから、みんな眠くなっちゃったみたい。</p>
     </section>
 
+
+    <section id="gameCard" class="card game-card" data-phase="ready" aria-label="かくれんぼゲーム" hidden>
+      <p class="eyebrow" id="roundLabel">1かいめ</p>
+      <h2 id="gameTitle">かくれんぼしよう！</h2>
+      <p class="game-instruction" id="gameInstruction" role="status" aria-live="polite">めをとじてね。</p>
+
+      <div class="game-clock" aria-label="目を閉じる目標時間">
+        <strong id="secondsRemaining">10</strong><span>びょう</span>
+        <span class="game-clock-caption">（もくひょう <span id="goalSeconds">10</span>びょう）</span>
+      </div>
+      <div id="gameProgress" class="game-progress" role="progressbar" aria-label="目を閉じられた時間" aria-valuemin="0" aria-valuenow="0" aria-valuemax="10">
+        <div id="progressFill" class="game-progress-fill"></div>
+      </div>
+      <div id="gameCharacter" class="game-character" aria-hidden="true">🐰</div>
+
+      <div id="hidingChoices" class="hiding-choices" aria-label="どこにかくれたかな？" hidden>
+        <button class="hiding-spot" data-spot="tree" type="button"><span aria-hidden="true">🌳</span>きのかげ</button>
+        <button class="hiding-spot" data-spot="house" type="button"><span aria-hidden="true">🏠</span>おうち</button>
+        <button class="hiding-spot" data-spot="flower" type="button"><span aria-hidden="true">🌷</span>おはな</button>
+      </div>
+      <p id="guessFeedback" class="guess-feedback" aria-live="polite"></p>
+      <button id="nextRoundButton" class="game-primary" type="button" hidden>つぎもあそぶ！</button>
+      <button id="endGameButton" class="game-end" type="button">おしまいにする</button>
+    </section>
+
     <aside id="cameraBubble" class="camera-bubble" aria-label="フロントカメラ">
       <video id="camera" autoplay playsinline muted></video>
       <div class="face-guide" aria-hidden="true"></div>
