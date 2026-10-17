@@ -78,11 +78,12 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
   await page.goto(base);
   return { browser, context, page, errors, requests };
 }
-async function startAndChoose(page) {
+async function startAndChoose(page, character = "rabbit", screenshotName = null) {
   await page.locator("#startButton").click();
   await page.waitForFunction(() => window.__inferences > 0);
   await page.clock.runFor(3500);
-  await page.locator('[data-character="rabbit"]').click();
+  if (screenshotName) await page.screenshot({ path: `test-results/${screenshotName}-select.png` });
+  await page.locator(`[data-character="${character}"]`).click();
   assert.equal(await page.locator("#gameCard").isVisible(), true);
 }
 const sensor = (page, change) => page.evaluate(change => Object.assign(window.__sensor, change), change);
@@ -94,7 +95,12 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
     const { page } = f;
     try {
       await page.screenshot({ path: `test-results/${name}-welcome.png` });
-      await startAndChoose(page);
+      await startAndChoose(page, "rabbit", name);
+      await page.clock.runFor(300);
+      await page.locator("#gameCharacter").click();
+      assert.match(await page.locator("#gameInstruction").innerText(), /なでなで/);
+      assert.equal(await elapsed(page), 0, "petting never awards closed-eye time");
+      await page.clock.runFor(1600);
       await sensor(page, { eye: "closed" });
       await page.clock.runFor(4750);
       const saved = await elapsed(page);
@@ -104,6 +110,7 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       assert.match(await page.locator("#gameInstruction").innerText(), /今見てた/);
       assert.equal(await elapsed(page), saved);
       assert.equal(await page.locator("#peekPhoto").isVisible(), true);
+      assert.equal(await page.locator("#gameCharacter .plush").evaluate(el => getComputedStyle(el).backgroundPosition), "50% 50%");
       assert.ok(await page.locator("#peekCanvas").evaluate(canvas => canvas.width > 0));
       await page.screenshot({ path: `test-results/${name}-peek.png` });
       await page.clock.runFor(1800);
@@ -122,16 +129,31 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       assert.equal(await page.locator("#gameCard").getAttribute("data-phase"), "waiting-to-seek");
       assert.equal(await page.locator("#gameInstruction").innerText(), "…");
       assert.equal(await page.locator("#peekPhoto").isVisible(), false);
+      assert.equal(await page.locator("#gameCard").evaluate(el => el.getAnimations({subtree:true}).filter(a => a.playState === "running").length), 0, "completed closure stays still");
       await sensor(page, { eye: "open" });
       await page.clock.runFor(1100);
       assert.equal(await page.locator("#gameCard").getAttribute("data-phase"), "seeking");
+      await page.screenshot({ path: `test-results/${name}-seeking.png` });
       await page.locator('[data-spot="house"]').click();
       assert.match(await page.locator("#guessFeedback").innerText(), /いない/);
+      assert.equal(await page.locator('[data-spot="house"] .spot-empty').isVisible(), true);
       await page.locator('[data-spot="tree"]').click();
+      await page.clock.runFor(700);
+      const friendBox = await page.locator("#gameCharacter").boundingBox();
+      const forestBox = await page.locator(".forest").boundingBox();
+      assert.ok(friendBox.y >= forestBox.y, "celebrating ears stay inside the scene");
+      assert.ok((await page.locator("#gameTitle").boundingBox()).y >= 0, "finding a friend keeps its heading on screen");
+      assert.equal(await page.evaluate(() => scrollY), 0, "round transitions return to the top without scroll anchoring");
       await page.screenshot({ path: `test-results/${name}-found.png` });
+      assert.equal(await page.locator("#foundReward").isVisible(), true);
+      assert.equal(await page.locator("#friendFlowers .bloomed").count(), 1);
+      await page.locator("#gameCharacter").click();
+      assert.match(await page.locator("#gameInstruction").innerText(), /なでなで/);
+      assert.equal(await page.locator("#gameCard").getAttribute("data-phase"), "found");
       await page.locator("#nextRoundButton").click();
       assert.equal(await page.locator("#goalSeconds").innerText(), "15");
       assert.equal(await elapsed(page), 0);
+      assert.equal(await page.locator("#foundReward").isVisible(), false);
       await page.locator("#endGameButton").click();
       assert.equal(await page.locator("#cameraBubble").isVisible(), false);
       assert.equal(await page.evaluate(() => window.__streams.every(s => s.getTracks().every(t => t.readyState === "ended"))), true);
@@ -139,6 +161,55 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       assert.deepEqual(f.errors, []);
       assert.ok(f.requests.every(r => r.method === "GET" && r.url.startsWith(base)));
       assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0);
+    } finally { await f.browser.close(); }
+  });
+
+  test(`${name}: storybook friends, small-screen touch targets and reduced motion`, { timeout: 60000 }, async () => {
+    const f = await fixture(type);
+    const { page } = f;
+    try {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.setViewportSize({width:320,height:667});
+      for (const [animal, greeting] of [["bear", /ぎゅ/], ["rabbit", /ぴょん/], ["cat", /にゃん/]]) {
+        await page.locator(`[data-friend="${animal}"]`).click();
+        assert.match(await page.locator("#friendGreeting").innerText(), greeting);
+        assert.equal(await page.evaluate(() => window.__streams.length), 0, "greeting does not request a camera");
+      }
+      const decoded = await page.evaluate(async () => {
+        const paths = ["rabbit.webp", "bear.webp", "cat.webp", "tree.svg", "house.svg", "flowers.svg"];
+        return Promise.all(paths.map(async path => {
+          const image = new Image(); image.src = `./assets/${path}`; await image.decode();
+          return image.naturalWidth > 0;
+        }));
+      });
+      assert.ok(decoded.every(Boolean), "all character and hiding-place illustrations decode");
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.screenshot({path:`test-results/${name}-small.png`});
+      await startAndChoose(page, "cat");
+      await page.clock.runFor(300);
+      assert.equal(await page.locator("#gameCharacter .plush").getAttribute("data-animal"), "cat");
+      await page.locator("#gameCharacter").click();
+      assert.match(await page.locator("#gameInstruction").innerText(), /ごろごろ/);
+      assert.equal(await page.locator("#gameCard").evaluate(el => el.getAnimations({subtree:true}).filter(a => a.playState === "running").length), 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.locator("#endGameButton").click();
+      await startAndChoose(page, "bear");
+      await page.clock.runFor(300);
+      await page.locator("#gameCharacter").click();
+      assert.match(await page.locator("#gameInstruction").innerText(), /ぽかぽか/);
+      await page.locator("#endGameButton").click();
+      await page.locator("#startButton").click();
+      await page.waitForFunction(() => window.__inferences > 0);
+      await page.clock.runFor(3500);
+      for (const button of await page.locator(".character").all()) {
+        const box = await button.boundingBox();
+        assert.ok(box.width >= 44 && box.height >= 44);
+      }
+      await page.screenshot({path:`test-results/${name}-small-select.png`});
+      await page.locator("#stopButton").click();
+      await page.setViewportSize({width:1280,height:900});
+      await page.screenshot({path:`test-results/${name}-desktop.png`});
+      assert.deepEqual(f.errors, []);
     } finally { await f.browser.close(); }
   });
 }
@@ -243,6 +314,12 @@ test("real MediaPipe loads locally and PWA reloads offline with model assets", {
     });
     assert.ok(cached.some(u => u.endsWith("face_landmarker.task")));
     assert.ok(cached.some(u => u.endsWith("vision_wasm_internal.wasm")));
+    for (const asset of ["rabbit.webp", "bear.webp", "cat.webp", "tree.svg", "house.svg", "flowers.svg"]) {
+      assert.ok(cached.some(u => u.endsWith(`/assets/${asset}`)), `${asset} is available offline`);
+    }
+    assert.equal(await page.evaluate(async () => {
+      const image = new Image(); image.src = "./assets/rabbit.webp"; await image.decode(); return image.naturalWidth > 0;
+    }), true);
     assert.ok(cached.every(u => u.startsWith(base) && !/blob:|data:|peek|camera/.test(u)));
     assert.ok(requests.every(r => r.method === "GET" && r.url.startsWith(base)));
     assert.deepEqual(errors, []);
