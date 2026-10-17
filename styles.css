@@ -85,3 +85,31 @@ html[data-light-state="dark"] #characterMessage { display: none; }
   .characters { gap: 8px; }
   .character { min-height: 112px; font-size: 13px; }
 }
+
+
+/* Hide-and-seek MVP */
+[hidden] { display: none !important; }
+.game-card { margin-top: 88px; padding-bottom: 24px; }
+.game-instruction { min-height: 3.5em; font-size: 18px; font-weight: 700; line-height: 1.7; }
+.game-clock { display: flex; justify-content: center; align-items: baseline; gap: 5px; margin-top: 8px; }
+.game-clock strong { font-size: 54px; font-variant-numeric: tabular-nums; }
+.game-clock-caption { font-size: 12px; opacity: .65; margin-left: 8px; }
+.game-progress { height: 14px; border-radius: 100px; background: #eae1d7; overflow: hidden; margin: 12px 0; }
+.game-progress-fill { height: 100%; width: 0%; border-radius: inherit; background: #78b69d; transition: width .12s linear; }
+.game-character { display: grid; place-items: center; min-height: 92px; font-size: 72px; transition: transform .5s ease, opacity .5s ease; }
+.game-card[data-phase="counting"] .game-character,
+.game-card[data-phase="waiting-to-seek"] .game-character,
+.game-card[data-phase="seeking"] .game-character { opacity: 0; transform: translateY(36px) scale(.6); }
+.hiding-choices { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+.hiding-spot { border: 0; border-radius: 18px; background: #f5eee3; color: inherit; padding: 14px 3px; min-height: 104px; font-size: 13px; font-weight: 800; }
+.hiding-spot span { display: block; font-size: 40px; margin-bottom: 6px; }
+.hiding-spot:disabled { opacity: .55; }
+.guess-feedback { min-height: 2em; font-weight: 700; }
+.game-primary { border: none; border-radius: 999px; background: #4a946e; color: white; padding: 13px 20px; font-weight: 800; min-height: 48px; width: 100%; }
+.game-end { margin-top: 12px; padding: 12px; min-height: 44px; border: none; background: transparent; color: #766b60; text-decoration: underline; }
+@media (max-width: 420px) {
+  .game-card { margin-top: 92px; }
+  .game-instruction { font-size: 16px; }
+  .game-clock strong { font-size: 46px; }
+  .hiding-spot span { font-size: 36px; }
+}
