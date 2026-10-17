@@ -1,0 +1,19 @@
+{
+  "name": "mi-tsuketa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node --test --test-concurrency=1 tests/browser/*.test.mjs",
+    "check": "node --check app.js && node --check sw.js && node --check game-core.mjs && node --check sensing.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.22-rc.20250304"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

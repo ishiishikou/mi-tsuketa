@@ -1,25 +1,37 @@
-name: Test hide-and-seek game
-
+name: Test Web game
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main]
   pull_request:
     branches: [main]
-
 permissions:
   contents: read
-
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   game-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run state machine tests
-        run: node --test tests/*.test.mjs
-      - name: Check browser entry syntax
-        run: |
-          node --check game-core.mjs
-          node --input-type=module --check < app.js
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run check
+      - run: npm test
+      - name: Build complete offline site
+        run: npm run build
+      - name: Install browser test engines
+        run: npx playwright install --with-deps chromium webkit
+      - name: Browser integration and real MediaPipe/offline smoke
+        run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-browser-screens
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7

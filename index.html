@@ -3,101 +3,110 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#fff8ef" />
+  <meta name="theme-color" content="#f8f6ed" />
+  <meta name="description" content="めをとじたら、どうぶつたちがかくれんぼ。カメラは端末の中だけで使う、親子の小さなあそび。" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self'; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />
   <title>みーつけた</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="./styles.css" />
-  <style>
-    html[data-night-state="night"] .character { opacity: .58; filter: grayscale(.25); pointer-events: none; }
-    html[data-night-state="night"] .character-face { transform: rotate(8deg); }
-    html[data-night-state="night"] .sleep-message { display: block; }
-    html[data-night-state="night"] #characterMessage { display: none; }
-  </style>
 </head>
 <body>
+  <header class="app-header">
+    <span class="brand"><span aria-hidden="true">🌱</span> みーつけた</span>
+    <button id="stopButton" class="text-button" type="button" hidden>おしまい</button>
+  </header>
   <main class="app">
-    <section class="card" id="welcomeCard">
-      <p class="eyebrow">みーつけた</p>
-      <h1>かくれんぼしよう！</h1>
-      <p id="message">「カメラをはじめる」を押して、お顔を映してね。</p>
-      <button id="startButton" type="button">カメラをはじめる</button>
-      <p class="privacy">カメラ映像は端末内の判定だけに使い、サーバーへ送信しません。</p>
+    <section id="resumePanel" class="resume-panel" role="status" hidden>
+      <p id="resumeMessage">おかえり！ のこりの時間から あそべるよ。</p>
+      <button id="resumeButton" class="primary" type="button">カメラを さいかい</button>
+    </section>
+    <section class="card welcome" id="welcomeCard">
+      <p class="eyebrow">ちいさな もりの かくれんぼ</p>
+      <div class="welcome-friends" aria-hidden="true"><span>🐻</span><span>🐰</span><span>🐱</span></div>
+      <h1>かくれんぼ<br>しよう！</h1>
+      <p id="message" role="status">「あそぶ」を押して、お顔をうつしてね。</p>
+      <button id="startButton" class="primary" type="button">あそぶ <span aria-hidden="true">→</span></button>
+      <p class="privacy">カメラは この端末の中だけで使います。<br>写真を保存したり、送ったりしません。</p>
     </section>
 
-    <section id="characterSelect" class="card character-select" aria-labelledby="characterTitle" hidden>
-      <p class="eyebrow">みーつけた！</p>
-      <h2 id="characterTitle">どの子とかくれんぼする？</h2>
-      <p id="characterMessage">いっしょに遊ぶ子をえらんでね。</p>
-      <div class="characters" role="list">
-        <button class="character" type="button" data-character="rabbit" role="listitem"><span class="character-face" aria-hidden="true">🐰</span><span>うさちゃん</span></button>
-        <button class="character" type="button" data-character="bear" role="listitem"><span class="character-face" aria-hidden="true">🐻</span><span>くまちゃん</span></button>
-        <button class="character" type="button" data-character="cat" role="listitem"><span class="character-face" aria-hidden="true">🐱</span><span>ねこちゃん</span></button>
+    <section id="characterSelect" class="card" aria-labelledby="characterTitle" hidden>
+      <p class="eyebrow">お顔 みーつけた！</p>
+      <h2 id="characterTitle">どの子と あそぶ？</h2>
+      <p id="characterMessage">いっしょに遊ぶ子を えらんでね。</p>
+      <div class="characters">
+        <button class="character" type="button" data-character="rabbit"><span class="character-face" aria-hidden="true">🐰</span><span>うさちゃん</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
+        <button class="character" type="button" data-character="bear"><span class="character-face" aria-hidden="true">🐻</span><span>くまちゃん</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
+        <button class="character" type="button" data-character="cat"><span class="character-face" aria-hidden="true">🐱</span><span>ねこちゃん</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
       </div>
-      <p class="sleep-message" aria-live="polite">暗いから、みんな眠くなっちゃったみたい。</p>
+      <p id="sleepMessage" class="sleep-message" role="status">暗いから、みんな眠くなっちゃったみたい。</p>
+      <p class="small-note">お顔を カメラに うつしたままでね。</p>
     </section>
-
 
     <section id="gameCard" class="card game-card" data-phase="ready" aria-label="かくれんぼゲーム" hidden>
       <p class="eyebrow" id="roundLabel">1かいめ</p>
       <h2 id="gameTitle">かくれんぼしよう！</h2>
-      <p class="game-instruction" id="gameInstruction" role="status" aria-live="polite">めをとじてね。</p>
-
-      <div class="game-clock" aria-label="目を閉じる目標時間">
-        <strong id="secondsRemaining">10</strong><span>びょう</span>
-        <span class="game-clock-caption">（もくひょう <span id="goalSeconds">10</span>びょう）</span>
+      <p class="game-instruction" id="gameInstruction" role="status">めをとじてね。</p>
+      <div class="game-clock">
+        <span class="clock-prefix">あと</span><strong id="secondsRemaining">10</strong><span>びょう</span>
+        <span class="game-clock-caption">もくひょう <span id="goalSeconds">10</span>びょう</span>
       </div>
-      <div id="gameProgress" class="game-progress" role="progressbar" aria-label="目を閉じられた時間" aria-valuemin="0" aria-valuenow="0" aria-valuemax="10">
-        <div id="progressFill" class="game-progress-fill"></div>
+      <div id="gameProgress" class="game-progress" role="progressbar" aria-label="目を閉じられた時間" aria-valuemin="0" aria-valuenow="0" aria-valuemax="10"><div id="progressFill"></div></div>
+      <div class="forest" aria-hidden="true">
+        <span class="forest-cloud">☁</span><span class="forest-tree tree-left">🌲</span>
+        <div id="gameCharacter" class="game-character"><span>🐰</span></div>
+        <span class="forest-tree tree-right">🌳</span><span class="forest-flower">🌼</span>
       </div>
-      <div id="gameCharacter" class="game-character" aria-hidden="true">🐰</div>
-
+      <figure id="peekPhoto" class="peek-photo" hidden>
+        <canvas id="peekCanvas" width="0" height="0" role="img" aria-label="いま目を開けたときのお顔"></canvas>
+        <figcaption>みーちゃった！</figcaption>
+      </figure>
       <div id="hidingChoices" class="hiding-choices" aria-label="どこにかくれたかな？" hidden>
         <button class="hiding-spot" data-spot="tree" type="button"><span aria-hidden="true">🌳</span>きのかげ</button>
         <button class="hiding-spot" data-spot="house" type="button"><span aria-hidden="true">🏠</span>おうち</button>
         <button class="hiding-spot" data-spot="flower" type="button"><span aria-hidden="true">🌷</span>おはな</button>
       </div>
-      <p id="guessFeedback" class="guess-feedback" aria-live="polite"></p>
-      <button id="nextRoundButton" class="game-primary" type="button" hidden>つぎもあそぶ！</button>
-      <button id="endGameButton" class="game-end" type="button">おしまいにする</button>
+      <p id="guessFeedback" class="guess-feedback" role="status"></p>
+      <p id="restMessage" class="small-note" hidden>おやすみ。カメラも おしまいにしたよ。</p>
+      <button id="nextRoundButton" class="primary" type="button" hidden>つぎも あそぶ！</button>
+      <button id="endGameButton" class="text-button game-end" type="button">おしまいにする</button>
     </section>
 
-    <aside id="cameraBubble" class="camera-bubble" aria-label="フロントカメラ">
+    <aside id="cameraBubble" class="camera-bubble" aria-label="フロントカメラ" hidden>
       <video id="camera" autoplay playsinline muted></video>
       <div class="face-guide" aria-hidden="true"></div>
       <div id="faceBadge" class="face-badge" data-state="idle">準備前</div>
     </aside>
+
+    <details id="parentInfo" class="parent-info">
+      <summary>おうちの方へ</summary>
+      <p>お子さまのお顔が正面に映る位置で使ってください。閉じた目を確認した時間だけ数えます。途中で目を開けても、残り時間から続けられます。</p>
+      <p>21:00〜翌6:00と、暗い場所では新しく遊べません。ゲーム開始後は明るさを判定しません。達成後も目を閉じていると静かに待ち、さらに約1分間閉眼が続いた場合はカメラを止めます。睡眠を診断するものではありません。</p>
+      <p>ホーム画面に追加するには、Safariの共有ボタン →「ホーム画面に追加」。初回はオンラインで開き、下の準備完了を待ってください。端末がキャッシュを消した場合は再び通信が必要です。</p>
+      <p id="offlineStatus" role="status">オフラインの準備中…</p>
+      <p>映像は端末内で処理し、開眼時の写真は約1.6秒だけ表示して消去します。録画、画像の保存・送信、アクセス解析は行いません。</p>
+      <details class="tuning">
+        <summary>判定の調整・確認</summary>
+        <p>終了してから変更できます。端末内の今回の画面だけに適用し、保存しません。</p>
+        <form id="settingsForm">
+          <fieldset id="settingsFields">
+            <label>閉眼のしきい値 <input id="closedThreshold" type="number" min="0.35" max="0.85" step="0.05" value="0.55" /></label>
+            <label>開眼のしきい値 <input id="openThreshold" type="number" min="0.1" max="0.45" step="0.05" value="0.25" /></label>
+            <label>暗さのしきい値 <input id="darkThreshold" type="number" min="15" max="90" step="5" value="45" /></label>
+            <button id="resetSettings" class="secondary" type="button">標準に戻す</button>
+          </fieldset>
+        </form>
+        <p id="settingsMessage" class="small-note" role="status">閉眼0.5秒・開眼0.75秒の継続で確定します。</p>
+        <output id="diagnostics">カメラを始めると判定値を確認できます。</output>
+      </details>
+      <p class="version">バージョン <span id="appVersion"></span></p>
+    </details>
+    <noscript><p>このアプリで遊ぶにはJavaScriptを有効にしてください。</p></noscript>
   </main>
-
   <script type="module" src="./app.js"></script>
-  <script>
-    (() => {
-      const characterSelect = document.querySelector("#characterSelect");
-      const buttons = [...document.querySelectorAll(".character")];
-      const sleepMessage = document.querySelector(".sleep-message");
-      const isNight = (date = new Date()) => date.getHours() >= 21 || date.getHours() < 6;
-
-      function applyNightRule() {
-        const night = isNight();
-        document.documentElement.dataset.nightState = night ? "night" : "day";
-        if (!characterSelect.hidden && night) {
-          buttons.forEach((button) => { button.disabled = true; });
-          sleepMessage.textContent = "もう夜だから眠いよ。また明日ね。";
-        } else if (!night && document.documentElement.dataset.lightState !== "dark") {
-          buttons.forEach((button) => { button.disabled = false; });
-          sleepMessage.textContent = "暗いから、みんな眠くなっちゃったみたい。";
-        }
-      }
-
-      new MutationObserver(applyNightRule).observe(characterSelect, { attributes: true, attributeFilter: ["hidden"] });
-      window.addEventListener("light-state-change", applyNightRule);
-      document.addEventListener("click", (event) => {
-        if (isNight() && event.target.closest(".character")) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-        }
-      }, true);
-      applyNightRule();
-      setInterval(applyNightRule, 60_000);
-    })();
-  </script>
 </body>
 </html>
