@@ -1,4 +1,5 @@
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/+esm";
+import { HideAndSeekGame } from "./game-core.mjs";
 
 const video = document.querySelector("#camera");
 const startButton = document.querySelector("#startButton");
@@ -7,6 +8,27 @@ const faceBadge = document.querySelector("#faceBadge");
 const welcomeCard = document.querySelector("#welcomeCard");
 const characterSelect = document.querySelector("#characterSelect");
 const characterButtons = [...document.querySelectorAll(".character")];
+const gameCard = document.querySelector("#gameCard");
+const gameTitle = document.querySelector("#gameTitle");
+const gameInstruction = document.querySelector("#gameInstruction");
+const roundLabel = document.querySelector("#roundLabel");
+const secondsRemaining = document.querySelector("#secondsRemaining");
+const goalSeconds = document.querySelector("#goalSeconds");
+const gameProgress = document.querySelector("#gameProgress");
+const progressFill = document.querySelector("#progressFill");
+const gameCharacter = document.querySelector("#gameCharacter");
+const hidingChoices = document.querySelector("#hidingChoices");
+const hidingSpotButtons = [...document.querySelectorAll(".hiding-spot")];
+const guessFeedback = document.querySelector("#guessFeedback");
+const nextRoundButton = document.querySelector("#nextRoundButton");
+const endGameButton = document.querySelector("#endGameButton");
+const characterInfo = {
+  rabbit: { name: "うさちゃん", face: "🐰" },
+  bear: { name: "くまちゃん", face: "🐻" },
+  cat: { name: "ねこちゃん", face: "🐱" },
+};
+let game = null;
+let selectedCharacter = "rabbit";
 
 let faceLandmarker;
 let stream;
@@ -61,6 +83,7 @@ function maybeShowCharacterSelect() {
 }
 
 function setFaceState(found) {
+  const changed = faceFound !== found;
   faceFound = found;
   faceBadge.dataset.state = found ? "found" : "missing";
   faceBadge.textContent = found ? "お顔みーつけた！" : "お顔をさがし中";
@@ -69,6 +92,10 @@ function setFaceState(found) {
     : "お顔が見えるように、カメラを見てね。";
 
   if (!found) resetEyeTracker();
+  if (changed && game) {
+    game.observe({ facePresent: found, eyeState: eyeTracker.state }, performance.now());
+    renderGame();
+  }
   maybeShowCharacterSelect();
 }
 
@@ -237,6 +264,10 @@ function detectLoop(now) {
     if (found) updateEyeState(result, now);
     updateLightState(now);
   }
+  if (game) {
+    game.tick(now, !document.hidden);
+    renderGame();
+  }
   animationFrameId = requestAnimationFrame(detectLoop);
 }
 
@@ -246,6 +277,8 @@ async function start() {
   faceBadge.dataset.state = "idle";
   faceBadge.textContent = "準備中";
   faceFound = false;
+  game = null;
+  gameCard.hidden = true;
   preGameScreen = "welcome";
   welcomeCard.hidden = false;
   characterSelect.hidden = true;
@@ -275,20 +308,108 @@ async function start() {
 
 function chooseCharacter(event) {
   const button = event.currentTarget;
-  if (lightTracker.state !== "light" || button.disabled) return;
+  if (lightTracker.state !== "light" ||
+      document.documentElement.dataset.nightState === "night" || button.disabled) return;
 
   const character = button.dataset.character;
   preGameScreen = "game";
   characterSelect.hidden = true;
   document.documentElement.dataset.character = character;
+  selectedCharacter = character;
+  game = new HideAndSeekGame();
+  game.observe({ facePresent: faceFound, eyeState: eyeTracker.state }, performance.now());
+  gameCard.hidden = false;
+  renderGame();
   window.dispatchEvent(new CustomEvent("game-start", {
     detail: { character, startedAt: performance.now() },
   }));
 }
 
+
+function writeText(element, text) {
+  if (element.textContent !== String(text)) element.textContent = String(text);
+}
+
+function renderGame() {
+  if (!game) return;
+  const phase = game.phase;
+  const info = characterInfo[selectedCharacter];
+  gameCard.dataset.phase = phase;
+  writeText(gameTitle, info.name + " と かくれんぼ！");
+  writeText(roundLabel, (game.roundIndex + 1) + "かいめ");
+  writeText(goalSeconds, game.targetMs / 1000);
+  writeText(secondsRemaining, game.remainingSeconds);
+  writeText(gameCharacter, info.face);
+  const ratio = Math.min(100, (game.elapsedMs / game.targetMs) * 100);
+  progressFill.style.width = ratio + "%";
+  gameProgress.setAttribute("aria-valuemax", String(game.targetMs / 1000));
+  gameProgress.setAttribute("aria-valuenow", String(Math.floor(game.elapsedMs / 1000)));
+
+  let instruction = "めをとじてね。かくれんぼをはじめよう！";
+  if (!game.facePresent) {
+    instruction = "おかおが みえないよ。カメラをみてね。";
+  } else if (phase === "counting") {
+    instruction = "そのまま めをとじていてね。";
+  } else if (phase === "waiting-to-seek") {
+    instruction = "…"; // Quiet; avoid stimulating a child who has kept their eyes closed.
+  } else if (phase === "seeking") {
+    instruction = "めをあけて、どこにかくれたか さがしてね！";
+  } else if (phase === "found") {
+    instruction = "みーつけた！ すごいね！";
+  }
+  writeText(gameInstruction, instruction);
+  hidingChoices.hidden = phase !== "seeking";
+  hidingSpotButtons.forEach((button) => { button.disabled = !game.facePresent; });
+  nextRoundButton.hidden = phase !== "found";
+  writeText(guessFeedback,
+    phase === "found" ? "つぎは すこし ながく めをとじてみよう！" :
+    phase === "seeking" && game.wrongGuess ? "そこじゃないよ。もういっかい！" : "");
+}
+
+function endGame() {
+  cancelAnimationFrame(animationFrameId);
+  stream?.getTracks().forEach((track) => track.stop());
+  faceLandmarker?.close();
+  stream = null;
+  faceLandmarker = null;
+  video.srcObject = null;
+  game = null;
+  faceFound = false;
+  preGameScreen = "welcome";
+  gameCard.hidden = true;
+  characterSelect.hidden = true;
+  welcomeCard.hidden = false;
+  startButton.disabled = false;
+  writeText(message, "「カメラをはじめる」を押して、お顔を映してね。");
+  faceBadge.dataset.state = "idle";
+  writeText(faceBadge, "準備前");
+  resetEyeTracker();
+}
+
 startButton.addEventListener("click", start);
 characterButtons.forEach((button) => button.addEventListener("click", chooseCharacter));
 window.addEventListener("game-start", stopPreGameLightDetection);
+window.addEventListener("eye-state-change", (event) => {
+  if (!game) return;
+  game.observe({ facePresent: faceFound, eyeState: event.detail.state }, performance.now());
+  renderGame();
+});
+hidingSpotButtons.forEach((button) => button.addEventListener("click", () => {
+  if (game) {
+    game.guess(button.dataset.spot);
+    renderGame();
+  }
+}));
+nextRoundButton.addEventListener("click", () => {
+  if (game?.nextRound(performance.now())) renderGame();
+});
+endGameButton.addEventListener("click", endGame);
+document.addEventListener("visibilitychange", () => {
+  if (game) {
+    game.tick(performance.now(), false);
+    renderGame();
+  }
+});
 
 window.addEventListener("pagehide", () => {
   cancelAnimationFrame(animationFrameId);
