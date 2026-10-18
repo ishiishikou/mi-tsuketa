@@ -138,3 +138,11 @@ test("stopping the monitor suppresses late async notification", async () => {
   await flush();
   assert.deepEqual(result.entries.map(e => e.state), ["installing"]);
 });
+
+test("a partial Service Worker mock with no registration reports failure safely", async () => {
+  const regless = createServiceWorker(undefined);
+  const report = track(regless);
+  await flush();
+  assert.equal(report.state, "failed");
+  report.stop();
+});

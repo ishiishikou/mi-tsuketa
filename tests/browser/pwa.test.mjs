@@ -98,7 +98,7 @@ async function openFirst(context, base) {
   return page;
 }
 const buildLabel = page => page.locator('meta[name="fixture-build"]').getAttribute("content");
-const status = page => page.locator("#offlineStatus").innerText();
+const status = page => page.locator("#offlineStatus").textContent();
 
 test("real Service Worker A→B update waits for all A tabs and preserves non-app caches", { timeout: 90000 }, async () => {
   const f = await fixture();
@@ -134,7 +134,7 @@ test("real Service Worker A→B update waits for all A tabs and preserves non-ap
     await latest.goto(f.base);
     await latest.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
     assert.equal(await buildLabel(latest), "B");
-    assert.match(await latest.locator("#appVersion").innerText(), /PWA test B/);
+    assert.match(await latest.locator("#appVersion").textContent(), /PWA test B/);
     await latest.waitForFunction(async old => !(await caches.keys()).includes(old), f.builds.A.cache);
     keys = await cacheKeys(latest);
     assert.ok(keys.includes(f.builds.B.cache), JSON.stringify(keys));
@@ -181,7 +181,7 @@ test("failed B precache does not destroy A: offline A then recover with successf
     await next.goto(f.base);
     assert.equal(await buildLabel(next), "B");
     assert.ok((await cacheKeys(next)).includes(f.builds.A.cache) === false);
-    assert.match(await next.locator("#appVersion").innerText(), /PWA test B/);
+    assert.match(await next.locator("#appVersion").textContent(), /PWA test B/);
     await context.close();
   } finally { await browser.close(); await f.close(); }
 });

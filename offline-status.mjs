@@ -71,6 +71,7 @@ export function watchOfflineStatus(serviceWorker, report) {
   // when the very first install fails.
   Promise.resolve().then(() => serviceWorker.register("./sw.js")).then(reg => {
     if (stopped) return;
+    if (!reg) { failed = true; refresh(); return; } // e.g. a partial browser test polyfill
     registration = reg;
     listen(reg, "updatefound", () => {
       failed = false; // a *new* install attempt supersedes an earlier failure
