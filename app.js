@@ -2,6 +2,7 @@ import { HideAndSeekGame, PEEK_REACTION_MS } from "./game-core.mjs";
 import { EyeTracker, LightTracker, SENSOR_DEFAULTS, startMode } from "./sensing.mjs";
 import { CHARACTERS, NIGHT_MESSAGE, gamePresentation } from "./characters.mjs";
 import { VERSION } from "./release.mjs";
+import { watchOfflineStatus } from "./offline-status.mjs";
 
 const $ = (id) => document.getElementById(id);
 const video = $("camera");
@@ -380,19 +381,4 @@ $("resetSettings").addEventListener("click", () => {
 text($("appVersion"), VERSION);
 render();
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js").then(registration => {
-    if (registration.waiting) text($("offlineStatus"), "新しい版の準備ができました。あそび終えたらアプリを閉じて開き直してね。");
-    registration.addEventListener("updatefound", () => {
-      const worker = registration.installing;
-      worker?.addEventListener("statechange", () => {
-        if (worker.state === "installed" && navigator.serviceWorker.controller) {
-          text($("offlineStatus"), "新しい版があります。あそび終えたらアプリを閉じて開き直してね。");
-        }
-      });
-    });
-    return navigator.serviceWorker.ready;
-  }).then(() => {
-    if (!$("offlineStatus").textContent.includes("新しい")) text($("offlineStatus"), "オフラインの準備ができました。");
-  }).catch(() => text($("offlineStatus"), "オフラインの準備ができていません。オンラインであそんでね。"));
-}
+watchOfflineStatus(navigator.serviceWorker, message => text($("offlineStatus"), message));
