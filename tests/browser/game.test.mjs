@@ -215,13 +215,24 @@ async function checkCelebrationAtWidths(page, browserName) {
       void getComputedStyle(friend).animationName;
       card.dataset.motion = "happy";
       void getComputedStyle(friend).animationName;
+      // The friend fades in from the seeking/hidden state. Finish that
+      // independent 200ms opacity transition before probing the celebration;
+      // otherwise WebKit may freeze its compositor at opacity 0 while we pause
+      // the transform animation. The opacity end value remains asserted below.
+      const transitions = friend.getAnimations().filter(a => a.transitionProperty === "opacity");
+      const transitionBefore = transitions.map(t => ({state:t.playState, time:t.currentTime}));
+      transitions.forEach(t => t.finish());
       const animation = friend.getAnimations().find(a => a.animationName === "celebrate");
-      if (!animation) return false;
-      animation.pause();
-      animation.currentTime = 0;
-      return true;
+      if (animation) {
+        animation.pause();
+        animation.currentTime = 0;
+      }
+      return {animation: Boolean(animation), opacity: Number(getComputedStyle(friend).opacity),
+        transitionBefore, motion: card.dataset.motion};
     });
-    assert.ok(started, `the CSS celebration must exist at ${width}px`);
+    assert.ok(started.animation, `the CSS celebration must exist at ${width}px: ${JSON.stringify(started)}`);
+    assert.ok(started.opacity >= 0.99,
+      `friend opacity transition must settle before CSS animation probing: ${JSON.stringify(started)}`);
     for (const [stage, ms] of [["start", 0], ["first-apex", 260], ["second-apex", 910]]) {
       const sample = await observe(stage, ms);
       assert.ok(sample.animation, `animation active at ${width}px ${stage}`);
