@@ -255,6 +255,14 @@ async function checkCelebrationAtWidths(page, browserName) {
     assert.notEqual(finished.animation?.state, "running",
       `celebration must stop after both iterations: ${JSON.stringify(finished)}`);
     await page.screenshot({path:`test-results/${browserName}-found-${width}-finished.png`});
+    // Verify the illustrated friend remains a real touch target at each
+    // viewport, not merely an element whose rectangle is inside the forest.
+    const touchTarget = await page.locator("#gameCharacter").boundingBox();
+    assert.ok(touchTarget.width >= 44 && touchTarget.height >= 44,
+      `found friend is a touch target at ${width}px`);
+    await page.locator("#gameCharacter").click();
+    assert.equal(await page.locator("#gameCard").getAttribute("data-phase"), "found");
+    assert.match(await page.locator("#gameInstruction").innerText(), /なでなで/);
   }
   // Reduced-motion should keep the same bounds without any celebration.
   await page.emulateMedia({reducedMotion: "reduce"});
