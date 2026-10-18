@@ -47,7 +47,7 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
         throw error;
       }
     };
-    Object.defineProperty(navigator.mediaDevices, "getUserMedia", { value: async () => {
+    const syntheticGetUserMedia = async () => {
       window.__cameraDiagnostics.gumCalls++;
       if (window.__sensor.deny) throw new DOMException("Synthetic denial", "NotAllowedError");
       const canvas = document.createElement("canvas");
@@ -69,7 +69,14 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
       window.__streams.push(stream);
       window.__cameraDiagnostics.gumReturns++;
       return stream;
-    } });
+    };
+    // WebKit can expose a fresh MediaDevices wrapper after a stopped capture
+    // stream; install the synthetic source on its prototype as well.
+    Object.defineProperty(Object.getPrototypeOf(navigator.mediaDevices), "getUserMedia",
+      { configurable: true, value: syntheticGetUserMedia });
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia",
+      { configurable: true, value: syntheticGetUserMedia });
+    window.__syntheticGetUserMedia = syntheticGetUserMedia;
     const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
     Object.defineProperty(HTMLMediaElement.prototype, "currentTime", {
       get() { return this.id === "camera" ? (window.__sensor.freeze ? 0 : performance.now() / 1000) : descriptor.get.call(this); },
@@ -111,7 +118,9 @@ async function startSyntheticCamera(page) {
   let ready = false;
   for (let attempt = 0; attempt < 50; attempt++) {
     await page.clock.runFor(100);
-    ready = await page.evaluate(previous => (window.__inferences ?? 0) > previous, previousInferences);
+    ready = await page.evaluate(({previousInferences, previousCalls}) =>
+      window.__cameraDiagnostics.gumCalls > previousCalls &&
+      (window.__inferences ?? 0) > previousInferences, {previousInferences, previousCalls});
     if (ready) break;
   }
   if (!ready) {
@@ -121,6 +130,7 @@ async function startSyntheticCamera(page) {
         counters: window.__cameraDiagnostics,
         inferences: window.__inferences ?? 0,
         cameraMethod: typeof navigator.mediaDevices?.getUserMedia,
+        usingMock: navigator.mediaDevices?.getUserMedia === window.__syntheticGetUserMedia,
         startButton: { disabled: document.querySelector("#startButton").disabled, text: document.querySelector("#startButton").textContent },
         currentTrackCount: document.querySelector("#camera").srcObject?.getTracks().length ?? null,
         visibility: document.visibilityState,
