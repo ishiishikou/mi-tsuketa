@@ -66,24 +66,8 @@ jobs:
             # Continue collecting all three attempts, even if one fails.
             if node --test --test-concurrency=1 --test-name-pattern='^WebKit:' tests/browser/game.test.mjs \
                 | tee "webkit-regression-${attempt}.tap" &&
-               grep -Eq '^# pass 2
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: webkit-regression-tap
-          path: webkit-regression-*.tap
-          if-no-files-found: ignore
-          retention-days: 7
- "webkit-regression-${attempt}.tap" &&
-               grep -Eq '^# fail 0
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: webkit-regression-tap
-          path: webkit-regression-*.tap
-          if-no-files-found: ignore
-          retention-days: 7
- "webkit-regression-${attempt}.tap"; then
+               grep -Eq '^# pass 2$' "webkit-regression-${attempt}.tap" &&
+               grep -Eq '^# fail 0$' "webkit-regression-${attempt}.tap"; then
               echo "WebKit attempt ${attempt}/3: PASS (both named tests ran)"
             else
               echo "::error::WebKit attempt ${attempt}/3: FAIL (see saved TAP log)"
