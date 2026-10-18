@@ -35,3 +35,46 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  # A single push provides both the regular CI result and repeatability
+  # evidence for the WebKit scenarios that previously failed intermittently.
+  # Runs are independent Node/browser processes within one GitHub Actions job.
+  webkit-stability:
+    name: WebKit regression (3 fresh runs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install WebKit
+        run: npx playwright install --with-deps webkit
+      - name: Repeat the WebKit regression tests in fresh processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "::group::WebKit regression attempt ${attempt}/3"
+            # Test name filter covers the full-round/celebration test and the
+            # storybook/restart test. Other cases stay in the regular CI job.
+            node --test --test-concurrency=1 --test-name-pattern='^WebKit:' tests/browser/game.test.mjs \
+              | tee "webkit-regression-${attempt}.tap"
+            # A filter matching zero tests could otherwise report success.
+            # Both WebKit tests must actually run and pass each time.
+            if ! grep -Eq '^# pass 2$' "webkit-regression-${attempt}.tap" ||
+               ! grep -Eq '^# fail 0$' "webkit-regression-${attempt}.tap"; then
+              echo "::error::WebKit regression attempt ${attempt} did not pass both tests"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webkit-regression-tap
+          path: webkit-regression-*.tap
+          if-no-files-found: ignore
+          retention-days: 7
