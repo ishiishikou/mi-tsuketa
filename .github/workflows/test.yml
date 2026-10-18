@@ -36,13 +36,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # A single push provides both the regular CI result and repeatability
-  # evidence for the WebKit scenarios that previously failed intermittently.
-  # Runs are independent Node/browser processes within one GitHub Actions job.
+  # Each matrix entry becomes a separate GitHub-hosted job on a fresh VM.
+  # Run sequentially to avoid concurrent browser-test resource contention.
   webkit-stability:
-    name: WebKit regression (3 fresh runs)
+    name: WebKit regression (fresh VM ${{ matrix.attempt }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        attempt: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,37 +54,22 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      # scripts/serve.mjs serves dist/ rather than the repository root.
-      - name: Build offline site for browser fixture
+      - name: Build offline site for isolated browser fixture
         run: npm run build
-      - name: Install WebKit
+      - name: Install WebKit in fresh runner
         run: npx playwright install --with-deps webkit
-      - name: Repeat the WebKit regression tests in fresh processes
+      - name: Run both WebKit regression scenarios
         shell: bash
         run: |
           set -euo pipefail
-          failures=0
-          for attempt in 1 2 3; do
-            echo "::group::WebKit regression attempt ${attempt}/3"
-            # A fresh Node process starts fresh Playwright browser sessions.
-            # Continue collecting all three attempts, even if one fails.
-            if node --test --test-concurrency=1 --test-name-pattern='^WebKit:' tests/browser/game.test.mjs \
-                | tee "webkit-regression-${attempt}.tap" &&
-               grep -Eq '^# pass 2$' "webkit-regression-${attempt}.tap" &&
-               grep -Eq '^# fail 0$' "webkit-regression-${attempt}.tap"; then
-              echo "WebKit attempt ${attempt}/3: PASS (both named tests ran)"
-            else
-              echo "::error::WebKit attempt ${attempt}/3: FAIL (see saved TAP log)"
-              failures=$((failures + 1))
-            fi
-            echo "::endgroup::"
-          done
-          echo "WebKit regression: $((3 - failures))/3 clean attempts"
-          if (( failures > 0 )); then exit 1; fi
+          node --test --test-concurrency=1 --test-name-pattern='^WebKit:' tests/browser/game.test.mjs | tee webkit-regression.tap
+          # Ensure a zero-match filter cannot be mistaken for success.
+          grep -Eq '^# pass 2$' webkit-regression.tap
+          grep -Eq '^# fail 0$' webkit-regression.tap
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: webkit-regression-tap
-          path: webkit-regression-*.tap
+          name: webkit-regression-tap-${{ matrix.attempt }}
+          path: webkit-regression.tap
           if-no-files-found: ignore
           retention-days: 7
