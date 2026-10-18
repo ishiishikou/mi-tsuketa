@@ -176,8 +176,9 @@ async function checkCelebrationAtWidths(page, browserName) {
     const friendRect = friend.getBoundingClientRect();
     const forestRect = forest.getBoundingClientRect();
     const headingRect = document.querySelector("#gameTitle").getBoundingClientRect();
+    const centerOffset = (friendRect.left + friendRect.right - forestRect.left - forestRect.right) / 2;
     return {
-      stage, viewport: innerWidth, phase: card.dataset.phase, motion: card.dataset.motion,
+      stage, viewport: innerWidth, phase: card.dataset.phase, motion: card.dataset.motion, centerOffset,
       scrollY, transform: getComputedStyle(friend).transform,
       opacity: Number(getComputedStyle(friend).opacity), visibility: getComputedStyle(friend).visibility,
       animation: animation ? {state: animation.playState, currentTime: animation.currentTime,
@@ -201,6 +202,9 @@ async function checkCelebrationAtWidths(page, browserName) {
     assert.ok(observation.friend.left >= observation.forest.left &&
       observation.friend.right <= observation.forest.right,
       `celebrating friend stays within the forest horizontally: ${detail}`);
+    if (observation.stage === "start" || observation.stage === "after-animation")
+      assert.ok(Math.abs(observation.centerOffset) <= 1,
+        `the stationary found friend must be centered: ${detail}`);
     assert.ok(observation.headingTop >= 0, `finding a friend keeps its heading on screen: ${detail}`);
     assert.equal(observation.scrollY, 0, `round transitions do not scroll: ${detail}`);
   };
@@ -215,12 +219,13 @@ async function checkCelebrationAtWidths(page, browserName) {
       void getComputedStyle(friend).animationName;
       card.dataset.motion = "happy";
       void getComputedStyle(friend).animationName;
-      // The friend fades in from the seeking/hidden state. Finish that
-      // independent 200ms opacity transition before probing the celebration;
-      // otherwise WebKit may freeze its compositor at opacity 0 while we pause
-      // the transform animation. The opacity end value remains asserted below.
-      const transitions = friend.getAnimations().filter(a => a.transitionProperty === "opacity");
-      const transitionBefore = transitions.map(t => ({state:t.playState, time:t.currentTime}));
+      // Seeking-to-found also transitions left (300ms) and opacity (200ms).
+      // Finish both independent transitions before pausing/restarting the
+      // celebration; WebKit's test clock can freeze these at intermediate
+      // values. Still assert visible opacity and correct centering below.
+      const transitions = friend.getAnimations().filter(a =>
+        a.transitionProperty === "opacity" || a.transitionProperty === "left");
+      const transitionBefore = transitions.map(t => ({property:t.transitionProperty, state:t.playState, time:t.currentTime}));
       transitions.forEach(t => t.finish());
       const animation = friend.getAnimations().find(a => a.animationName === "celebrate");
       if (animation) {
