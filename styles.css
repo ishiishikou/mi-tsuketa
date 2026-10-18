@@ -149,7 +149,9 @@ body:has(#cameraBubble:not([hidden])) .app { padding-top: 39px; }
 [data-phase="found"] #gameTitle { font-size: 29px; color: #b58b50; }
 [data-phase="found"] .game-instruction { background: #fbf0d8; font-size: 13px; }
 [data-phase="found"] .game-instruction::after { border-top-color: #fbf0d8; }
-[data-phase="found"] .forest { height: 230px; }
+/* Follow the viewport until the 500px layout switches to smaller plush proportions. */
+/* Keep the rabbit's ears inside the forest even at the 40% celebrate jump. */
+[data-phase="found"] .forest { height: clamp(245px, 60vw, 290px); }
 [data-phase="found"] .hiding-spot img { opacity: .7; }
 .peek-photo { position: absolute; right: 8px; top: 60px; z-index: 5; width: 42%; margin: 0; padding: 6px 6px 8px; border: 1px solid #e3ceaa; border-radius: 15px; background: #fffdf5; transform: rotate(6deg); box-shadow: 0 4px 14px #a38c6033; }
 .peek-photo::before { content: ""; position: absolute; width: 40%; height: 14px; background: #e7c28ab3; top: -7px; left: 30%; transform: rotate(-5deg); }
@@ -198,7 +200,7 @@ input { width: 85px; min-height: 44px; border: 1px solid #bec9b1; border-radius:
 @keyframes sparkle-in { from { opacity: 0; scale: .3; } to { opacity: 1; scale: 1; } }
 @keyframes heart-float { 0% { opacity: 0; transform: translateY(8px) scale(.4); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-30px) scale(1.2); } }
 @media (hover: hover) { .welcome-friend:hover .plush { transform: translateY(-5px); } .character:hover:not(:disabled) { transform: translateY(-4px); } .hiding-spot:hover:not(:disabled) img { transform: rotate(-4deg); } }
-@media (min-width: 500px) { .welcome { padding: 8px 28px; } .character-face { width: 110%; } .character-name { font-size: 16px; } .character-personality { font-size: 10px; } .game-card { padding-inline: 24px; } .game-character { width: 46%; left: calc(27% - var(--hide-progress) * 18%); } [data-motion="happy"] .game-character, [data-motion="sleep"] .game-character { left: 30%; width: 40%; } .hiding-choices { gap: 24px; } [data-phase="found"] .forest { height: 280px; } }
+@media (min-width: 500px) { .welcome { padding: 8px 28px; } .character-face { width: 110%; } .character-name { font-size: 16px; } .character-personality { font-size: 10px; } .game-card { padding-inline: 24px; } .game-character { width: 46%; left: calc(27% - var(--hide-progress) * 18%); } [data-motion="happy"] .game-character, [data-motion="sleep"] .game-character { left: 30%; width: 40%; } .hiding-choices { gap: 24px; }  }
 @media (max-width: 360px) { .app { padding-inline: 12px; } .app-header { padding-inline: 17px; } .brand { font-size: 13px; gap: 5px; } .character-name { font-size: 12px; } .character-personality { font-size: 7px; } .game-instruction { font-size: 12px; } .game-card { padding-inline: 9px; } .friend-greeting { font-size: 11px; padding-inline: 12px; } }
 @media (orientation: landscape) and (max-height: 500px) { .app { max-width: 680px; padding-right: 100px; } body:has(#cameraBubble:not([hidden])) .app { padding-top: 12px; } .welcome-meadow { height: 240px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .game-character.is-loved .pet-heart { opacity: 1; } }
