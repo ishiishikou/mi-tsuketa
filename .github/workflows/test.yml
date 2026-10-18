@@ -58,6 +58,12 @@ jobs:
         run: npm run build
       - name: Install WebKit in fresh runner
         run: npx playwright install --with-deps webkit
+      - name: Diagnose native media versus virtual clock (one VM)
+        if: matrix.attempt == 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/browser/diagnose-camera.mjs | tee camera-diagnostic.jsonl
       - name: Run both WebKit regression scenarios
         shell: bash
         run: |
@@ -70,6 +76,8 @@ jobs:
         if: always()
         with:
           name: webkit-regression-tap-${{ matrix.attempt }}
-          path: webkit-regression.tap
+          path: |
+            webkit-regression.tap
+            camera-diagnostic.jsonl
           if-no-files-found: ignore
           retention-days: 7
