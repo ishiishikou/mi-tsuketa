@@ -226,9 +226,11 @@ async function checkCelebrationAtWidths(page, browserName) {
       if (stage === "first-apex")
         await page.screenshot({path:`test-results/${browserName}-found-${width}-apex.png`});
     }
+    // Playwright's virtual clock can leave CSS animations a few milliseconds
+    // shy of their end (on both engines). Seek the real CSSAnimation to its
+    // specified endpoint instead of relying on sampling an arbitrary frame.
     await page.evaluate(() => document.querySelector("#gameCharacter")
-      .getAnimations().find(a => a.animationName === "celebrate").play());
-    await page.clock.runFor(1500);
+      .getAnimations().find(a => a.animationName === "celebrate").finish());
     const finished = await observe("after-animation");
     verify(finished);
     assert.notEqual(finished.animation?.state, "running",
