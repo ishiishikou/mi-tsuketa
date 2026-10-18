@@ -158,6 +158,95 @@ async function startAndChoose(page, character = "rabbit", screenshotName = null)
 const sensor = (page, change) => page.evaluate(change => Object.assign(window.__sensor, change), change);
 const elapsed = async page => Number(await page.locator("#gameProgress").getAttribute("aria-valuenow"));
 
+// Exercise the real CSS keyframes at known animation times. A virtual-clock
+// delay alone does not guarantee WebKit sampled the same animation frame.
+async function checkCelebrationAtWidths(page, browserName) {
+  const widths = [320, 390, 414, 430, 499, 500];
+  const observe = (stage, currentTime = null) => page.evaluate(({stage, currentTime}) => {
+    const card = document.querySelector("#gameCard");
+    const friend = document.querySelector("#gameCharacter");
+    const forest = document.querySelector(".forest");
+    const animation = friend.getAnimations().find(a => a.animationName === "celebrate");
+    if (currentTime !== null && animation) {
+      animation.pause();
+      animation.currentTime = currentTime;
+    }
+    // Both rectangles and all phase/animation diagnostics are sampled in one
+    // layout pass. Never log a camera image, frame or facial landmark.
+    const friendRect = friend.getBoundingClientRect();
+    const forestRect = forest.getBoundingClientRect();
+    const headingRect = document.querySelector("#gameTitle").getBoundingClientRect();
+    return {
+      stage, viewport: innerWidth, phase: card.dataset.phase, motion: card.dataset.motion,
+      scrollY, transform: getComputedStyle(friend).transform,
+      animation: animation ? {state: animation.playState, currentTime: animation.currentTime,
+        name: animation.animationName} : null,
+      friend: {top: friendRect.top, bottom: friendRect.bottom,
+        left: friendRect.left, right: friendRect.right},
+      forest: {top: forestRect.top, bottom: forestRect.bottom,
+        left: forestRect.left, right: forestRect.right},
+      headingTop: headingRect.top,
+    };
+  }, {stage, currentTime});
+  const verify = observation => {
+    const detail = JSON.stringify(observation);
+    assert.equal(observation.phase, "found", detail);
+    assert.ok(observation.friend.top >= observation.forest.top,
+      `celebrating ears stay inside the scene: ${detail}`);
+    assert.ok(observation.friend.bottom <= observation.forest.bottom,
+      `celebrating feet stay inside the scene: ${detail}`);
+    assert.ok(observation.friend.left >= observation.forest.left &&
+      observation.friend.right <= observation.forest.right,
+      `celebrating friend stays within the forest horizontally: ${detail}`);
+    assert.ok(observation.headingTop >= 0, `finding a friend keeps its heading on screen: ${detail}`);
+    assert.equal(observation.scrollY, 0, `round transitions do not scroll: ${detail}`);
+  };
+  for (const width of widths) {
+    await page.setViewportSize({width, height:844});
+    const started = await page.evaluate(() => {
+      const card = document.querySelector("#gameCard");
+      const friend = document.querySelector("#gameCharacter");
+      // Restart only the visual celebration for each viewport, without
+      // restarting the game, detector, session or camera.
+      card.dataset.motion = "reset-for-layout-check";
+      void getComputedStyle(friend).animationName;
+      card.dataset.motion = "happy";
+      void getComputedStyle(friend).animationName;
+      const animation = friend.getAnimations().find(a => a.animationName === "celebrate");
+      if (!animation) return false;
+      animation.pause();
+      animation.currentTime = 0;
+      return true;
+    });
+    assert.ok(started, `the CSS celebration must exist at ${width}px`);
+    for (const [stage, ms] of [["start", 0], ["first-apex", 260], ["second-apex", 910]]) {
+      const sample = await observe(stage, ms);
+      assert.ok(sample.animation, `animation active at ${width}px ${stage}`);
+      verify(sample);
+      if (stage === "first-apex")
+        await page.screenshot({path:`test-results/${browserName}-found-${width}-apex.png`});
+    }
+    await page.evaluate(() => document.querySelector("#gameCharacter")
+      .getAnimations().find(a => a.animationName === "celebrate").play());
+    await page.clock.runFor(1500);
+    const finished = await observe("after-animation");
+    verify(finished);
+    assert.notEqual(finished.animation?.state, "running",
+      `celebration must stop after both iterations: ${JSON.stringify(finished)}`);
+    await page.screenshot({path:`test-results/${browserName}-found-${width}-finished.png`});
+  }
+  // Reduced-motion should keep the same bounds without any celebration.
+  await page.emulateMedia({reducedMotion: "reduce"});
+  await page.setViewportSize({width:499,height:844});
+  const reduced = await observe("reduced-motion");
+  verify(reduced);
+  assert.equal(await page.locator("#gameCharacter").evaluate(el =>
+    el.getAnimations().filter(a => a.playState === "running").length), 0,
+    "reduced motion does not animate the found character");
+  await page.emulateMedia({reducedMotion: "no-preference"});
+  await page.setViewportSize({width:390,height:844});
+}
+
 for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
   test(`${name}: full round, peek image cleanup, face recovery and next round`, { timeout: 90000 }, async () => {
     const f = await fixture(type);
@@ -207,12 +296,7 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       assert.match(await page.locator("#guessFeedback").innerText(), /いない/);
       assert.equal(await page.locator('[data-spot="house"] .spot-empty').isVisible(), true);
       await page.locator('[data-spot="tree"]').click();
-      await page.clock.runFor(700);
-      const friendBox = await page.locator("#gameCharacter").boundingBox();
-      const forestBox = await page.locator(".forest").boundingBox();
-      assert.ok(friendBox.y >= forestBox.y, "celebrating ears stay inside the scene");
-      assert.ok((await page.locator("#gameTitle").boundingBox()).y >= 0, "finding a friend keeps its heading on screen");
-      assert.equal(await page.evaluate(() => scrollY), 0, "round transitions return to the top without scroll anchoring");
+      await checkCelebrationAtWidths(page, name);
       await page.screenshot({ path: `test-results/${name}-found.png` });
       assert.equal(await page.locator("#foundReward").isVisible(), true);
       assert.equal(await page.locator("#friendFlowers .bloomed").count(), 1);
