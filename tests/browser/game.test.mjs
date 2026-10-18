@@ -179,6 +179,7 @@ async function checkCelebrationAtWidths(page, browserName) {
     return {
       stage, viewport: innerWidth, phase: card.dataset.phase, motion: card.dataset.motion,
       scrollY, transform: getComputedStyle(friend).transform,
+      opacity: Number(getComputedStyle(friend).opacity), visibility: getComputedStyle(friend).visibility,
       animation: animation ? {state: animation.playState, currentTime: animation.currentTime,
         name: animation.animationName} : null,
       friend: {top: friendRect.top, bottom: friendRect.bottom,
@@ -191,6 +192,8 @@ async function checkCelebrationAtWidths(page, browserName) {
   const verify = observation => {
     const detail = JSON.stringify(observation);
     assert.equal(observation.phase, "found", detail);
+    assert.ok(observation.opacity >= 0.99 && observation.visibility === "visible",
+      `the found friend must be visibly opaque: ${detail}`);
     assert.ok(observation.friend.top >= observation.forest.top,
       `celebrating ears stay inside the scene: ${detail}`);
     assert.ok(observation.friend.bottom <= observation.forest.bottom,
@@ -298,6 +301,9 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       assert.match(await page.locator("#guessFeedback").innerText(), /いない/);
       assert.equal(await page.locator('[data-spot="house"] .spot-empty').isVisible(), true);
       await page.locator('[data-spot="tree"]').click();
+      // Let the real hidden-to-found opacity transition settle before
+      // deliberately seeking the celebration keyframes at each viewport.
+      await page.clock.runFor(700);
       await checkCelebrationAtWidths(page, name);
       await page.screenshot({ path: `test-results/${name}-found.png` });
       assert.equal(await page.locator("#foundReward").isVisible(), true);
