@@ -28,7 +28,10 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
     window.__sensor = { eye: "open", face: true, dark, deny, freeze: false };
     window.__streams = [];
     window.__closedDetectors = 0;
-    window.__cameraDiagnostics = { gumCalls: 0, gumReturns: 0, playStarts: 0, playResolves: 0, playRejects: 0, modelStarts: 0, modelResolves: 0 };
+    window.__cameraDiagnostics = { startClicks: 0, gumCalls: 0, gumReturns: 0, playStarts: 0, playResolves: 0, playRejects: 0, modelStarts: 0, modelResolves: 0 };
+    document.addEventListener("click", event => {
+      if (event.target.closest?.("#startButton")) window.__cameraDiagnostics.startClicks++;
+    }, true);
     // Observe the native media playback promise; do not fake successful playback.
     const nativePlay = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function (...args) {
@@ -100,6 +103,7 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
 }
 async function startSyntheticCamera(page) {
   const previousInferences = await page.evaluate(() => window.__inferences ?? 0);
+  const previousCalls = await page.evaluate(() => window.__cameraDiagnostics.gumCalls);
   await page.locator("#startButton").click();
   // WebKit can await a fresh canvas frame in video.play() while the test clock is
   // paused. Drive synthetic frame delivery *while* awaiting this session's first
@@ -116,6 +120,9 @@ async function startSyntheticCamera(page) {
       return {
         counters: window.__cameraDiagnostics,
         inferences: window.__inferences ?? 0,
+        cameraMethod: typeof navigator.mediaDevices?.getUserMedia,
+        startButton: { disabled: document.querySelector("#startButton").disabled, text: document.querySelector("#startButton").textContent },
+        currentTrackCount: document.querySelector("#camera").srcObject?.getTracks().length ?? null,
         visibility: document.visibilityState,
         now: performance.now(),
         video: { readyState: video.readyState, paused: video.paused,
@@ -127,7 +134,7 @@ async function startSyntheticCamera(page) {
         message: document.querySelector("#message").textContent,
       };
     });
-    assert.fail(`synthetic camera did not infer in 5s of driven clock: ${JSON.stringify(diagnostics)}`);
+    assert.fail(`synthetic camera did not infer in 5s of driven clock: ${JSON.stringify({ previousInferences, previousCalls, ...diagnostics })}`);
   }
   // LightTracker needs several synthetic samples before character selection.
   await page.clock.runFor(3500);
