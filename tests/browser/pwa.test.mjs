@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { createHash } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
@@ -55,6 +55,7 @@ async function variants() {
   return { A: await make("A"), B: await make("B", true), bad: await make("bad", true) };
 }
 async function fixture() {
+  await mkdir("test-results", { recursive: true });
   const builds = await variants();
   let variant = "A";
   const requests = [];
@@ -99,14 +100,20 @@ async function openFirst(context, base) {
 }
 const buildLabel = page => page.locator('meta[name="fixture-build"]').getAttribute("content");
 const status = page => page.locator("#offlineStatus").textContent();
+async function screenshotStatus(page, name) {
+  // No camera is started in this fixture: screenshots contain text/UI only.
+  await page.locator("#parentInfo").evaluate(details => { details.open = true; });
+  await page.screenshot({ path: `test-results/${name}.png`, fullPage: true });
+}
 
 test("real Service Worker A→B update waits for all A tabs and preserves non-app caches", { timeout: 90000 }, async () => {
   const f = await fixture();
   const browser = await chromium.launch({ headless: true });
   try {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
     const first = await openFirst(context, f.base);
     assert.equal(await buildLabel(first), "A");
+    await screenshotStatus(first, "pwa-A-ready");
     const second = await context.newPage();
     await second.goto(f.base);
     assert.equal(await buildLabel(second), "A");
@@ -118,6 +125,7 @@ test("real Service Worker A→B update waits for all A tabs and preserves non-ap
       document.querySelector("#offlineStatus").textContent.includes("新しい版の準備ができました")));
     assert.equal(await buildLabel(first), "A");
     assert.equal(await buildLabel(second), "A");
+    await screenshotStatus(first, "pwa-B-waiting");
     let keys = await cacheKeys(first);
     assert.ok(keys.includes(f.builds.A.cache), JSON.stringify(keys));
     assert.ok(keys.includes(f.builds.B.cache), JSON.stringify(keys));
@@ -135,6 +143,7 @@ test("real Service Worker A→B update waits for all A tabs and preserves non-ap
     await latest.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
     assert.equal(await buildLabel(latest), "B");
     assert.match(await latest.locator("#appVersion").textContent(), /PWA test B/);
+    await screenshotStatus(latest, "pwa-B-active");
     await latest.waitForFunction(async old => !(await caches.keys()).includes(old), f.builds.A.cache);
     keys = await cacheKeys(latest);
     assert.ok(keys.includes(f.builds.B.cache), JSON.stringify(keys));
@@ -154,7 +163,7 @@ test("failed B precache does not destroy A: offline A then recover with successf
   const f = await fixture();
   const browser = await chromium.launch({ headless: true });
   try {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
     const page = await openFirst(context, f.base);
     assert.equal(await buildLabel(page), "A");
 
@@ -162,6 +171,7 @@ test("failed B precache does not destroy A: offline A then recover with successf
     await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
     await page.waitForFunction(() => document.querySelector("#offlineStatus")?.textContent.includes("更新の準備ができなかった"));
     assert.match(await status(page), /今の版は使えます/);
+    await screenshotStatus(page, "pwa-B-install-failed");
     assert.ok((await cacheKeys(page)).includes(f.builds.A.cache));
 
     await context.setOffline(true);
