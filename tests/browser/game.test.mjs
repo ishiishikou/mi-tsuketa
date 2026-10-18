@@ -28,7 +28,24 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
     window.__sensor = { eye: "open", face: true, dark, deny, freeze: false };
     window.__streams = [];
     window.__closedDetectors = 0;
+    window.__cameraDiagnostics = { gumCalls: 0, gumReturns: 0, playStarts: 0, playResolves: 0, playRejects: 0, modelStarts: 0, modelResolves: 0 };
+    // Observe the native media playback promise; do not fake successful playback.
+    const nativePlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      if (this.id !== "camera") return nativePlay.apply(this, args);
+      window.__cameraDiagnostics.playStarts++;
+      try {
+        return Promise.resolve(nativePlay.apply(this, args)).then(
+          value => { window.__cameraDiagnostics.playResolves++; return value; },
+          error => { window.__cameraDiagnostics.playRejects++; throw error; }
+        );
+      } catch (error) {
+        window.__cameraDiagnostics.playRejects++;
+        throw error;
+      }
+    };
     Object.defineProperty(navigator.mediaDevices, "getUserMedia", { value: async () => {
+      window.__cameraDiagnostics.gumCalls++;
       if (window.__sensor.deny) throw new DOMException("Synthetic denial", "NotAllowedError");
       const canvas = document.createElement("canvas");
       canvas.width = 640; canvas.height = 480;
@@ -47,6 +64,7 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
         track.stop = () => { clearInterval(timer); stop(); };
       });
       window.__streams.push(stream);
+      window.__cameraDiagnostics.gumReturns++;
       return stream;
     } });
     const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
@@ -60,7 +78,9 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
     export class FilesetResolver { static async forVisionTasks() { return {}; } }
     export class FaceLandmarker {
       static async createFromOptions() {
+        window.__cameraDiagnostics.modelStarts++;
         if (window.__sensor.delayModel) await new Promise(resolve => { window.__resolveModel = resolve; });
+        window.__cameraDiagnostics.modelResolves++;
         return new FaceLandmarker();
       }
       detectForVideo() {
@@ -81,8 +101,35 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
 async function startSyntheticCamera(page) {
   const previousInferences = await page.evaluate(() => window.__inferences ?? 0);
   await page.locator("#startButton").click();
-  // A previous session's counter cannot prove that the new async video/model is ready.
-  await page.waitForFunction(previous => window.__inferences > previous, previousInferences);
+  // WebKit can await a fresh canvas frame in video.play() while the test clock is
+  // paused. Drive synthetic frame delivery *while* awaiting this session's first
+  // inference, rather than waiting for inference before advancing the clock.
+  let ready = false;
+  for (let attempt = 0; attempt < 50; attempt++) {
+    await page.clock.runFor(100);
+    ready = await page.evaluate(previous => (window.__inferences ?? 0) > previous, previousInferences);
+    if (ready) break;
+  }
+  if (!ready) {
+    const diagnostics = await page.evaluate(() => {
+      const video = document.querySelector("#camera");
+      return {
+        counters: window.__cameraDiagnostics,
+        inferences: window.__inferences ?? 0,
+        visibility: document.visibilityState,
+        now: performance.now(),
+        video: { readyState: video.readyState, paused: video.paused,
+          width: video.videoWidth, height: video.videoHeight, error: video.error?.code ?? null },
+        tracks: window.__streams.map(stream => stream.getTracks().map(t => ({readyState:t.readyState, muted:t.muted}))),
+        closedDetectors: window.__closedDetectors,
+        visible: Object.fromEntries(["welcomeCard", "characterSelect", "resumePanel"].map(
+          id => [id, !document.getElementById(id).hidden])),
+        message: document.querySelector("#message").textContent,
+      };
+    });
+    assert.fail(`synthetic camera did not infer in 5s of driven clock: ${JSON.stringify(diagnostics)}`);
+  }
+  // LightTracker needs several synthetic samples before character selection.
   await page.clock.runFor(3500);
 }
 async function startAndChoose(page, character = "rabbit", screenshotName = null) {
