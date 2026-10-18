@@ -50,27 +50,49 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      # scripts/serve.mjs serves dist/ rather than the repository root.
+      - name: Build offline site for browser fixture
+        run: npm run build
       - name: Install WebKit
         run: npx playwright install --with-deps webkit
       - name: Repeat the WebKit regression tests in fresh processes
         shell: bash
         run: |
           set -euo pipefail
+          failures=0
           for attempt in 1 2 3; do
             echo "::group::WebKit regression attempt ${attempt}/3"
-            # Test name filter covers the full-round/celebration test and the
-            # storybook/restart test. Other cases stay in the regular CI job.
-            node --test --test-concurrency=1 --test-name-pattern='^WebKit:' tests/browser/game.test.mjs \
-              | tee "webkit-regression-${attempt}.tap"
-            # A filter matching zero tests could otherwise report success.
-            # Both WebKit tests must actually run and pass each time.
-            if ! grep -Eq '^# pass 2$' "webkit-regression-${attempt}.tap" ||
-               ! grep -Eq '^# fail 0$' "webkit-regression-${attempt}.tap"; then
-              echo "::error::WebKit regression attempt ${attempt} did not pass both tests"
-              exit 1
+            # A fresh Node process starts fresh Playwright browser sessions.
+            # Continue collecting all three attempts, even if one fails.
+            if node --test --test-concurrency=1 --test-name-pattern='^WebKit:' tests/browser/game.test.mjs \
+                | tee "webkit-regression-${attempt}.tap" &&
+               grep -Eq '^# pass 2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webkit-regression-tap
+          path: webkit-regression-*.tap
+          if-no-files-found: ignore
+          retention-days: 7
+ "webkit-regression-${attempt}.tap" &&
+               grep -Eq '^# fail 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webkit-regression-tap
+          path: webkit-regression-*.tap
+          if-no-files-found: ignore
+          retention-days: 7
+ "webkit-regression-${attempt}.tap"; then
+              echo "WebKit attempt ${attempt}/3: PASS (both named tests ran)"
+            else
+              echo "::error::WebKit attempt ${attempt}/3: FAIL (see saved TAP log)"
+              failures=$((failures + 1))
             fi
             echo "::endgroup::"
           done
+          echo "WebKit regression: $((3 - failures))/3 clean attempts"
+          if (( failures > 0 )); then exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
