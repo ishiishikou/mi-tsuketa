@@ -42,6 +42,15 @@ historical stalled sample. MediaDevices wrapper replacement was not observed.
 
 ## Running and interpreting results
 
+The first fixed-camera CI (run 39238110733) passed the native lifecycle checks
+but exposed a separate layout-test failure: at width 320, the animation-start
+sample was 8.016px left of center with identity transform. The test restarted
+celebration by changing `data-motion` away from `happy`, which also changed
+`left` from 26% to 23% and width from 48% to 54%. This introduced an artificial
+layout transition (3% of the 276px forest is 8.28px). Restart only `animation-name`
+instead, preserving the actual found layout. Keep every center/boundary assertion
+and add computed left and transition-state diagnostics to the same sample.
+
 Run the usual `npm run check`, `npm test`, `npm run build`, and
 `npm run test:browser`. The PR workflow also runs all WebKit scenarios on three
 fresh GitHub-hosted VMs, sequentially with `fail-fast: false`. All four jobs

@@ -218,6 +218,9 @@ async function checkCelebrationAtWidths(page, browserName) {
       opacity: Number(getComputedStyle(friend).opacity), visibility: getComputedStyle(friend).visibility,
       animation: animation ? {state: animation.playState, currentTime: animation.currentTime,
         name: animation.animationName} : null,
+      left: getComputedStyle(friend).left,
+      transitions: friend.getAnimations().filter(a => a.transitionProperty).map(a =>
+        ({property: a.transitionProperty, state: a.playState, time: a.currentTime})),
       friend: {top: friendRect.top, bottom: friendRect.bottom,
         left: friendRect.left, right: friendRect.right},
       forest: {top: forestRect.top, bottom: forestRect.bottom,
@@ -248,11 +251,13 @@ async function checkCelebrationAtWidths(page, browserName) {
     const started = await page.evaluate(() => {
       const card = document.querySelector("#gameCard");
       const friend = document.querySelector("#gameCharacter");
-      // Restart only the visual celebration for each viewport, without
-      // restarting the game, detector, session or camera.
-      card.dataset.motion = "reset-for-layout-check";
+      // Restart only the animation. Toggling data-motion also changes width
+      // (48% -> 54%) and left (26% -> 23%), creating an artificial transition
+      // that can still be sampled on WebKit after returning to "happy".
+      // Preserve the real found layout while restarting its CSS keyframes.
+      friend.style.animationName = "none";
       void getComputedStyle(friend).animationName;
-      card.dataset.motion = "happy";
+      friend.style.removeProperty("animation-name");
       void getComputedStyle(friend).animationName;
       // Seeking-to-found also transitions left (300ms) and opacity (200ms).
       // Finish both independent transitions before pausing/restarting the
