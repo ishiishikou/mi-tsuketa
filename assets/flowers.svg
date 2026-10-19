@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 170">
+  <defs><linearGradient id="bush" x2=".6" y2="1"><stop stop-color="#bdd0a2"/><stop offset="1" stop-color="#89a57d"/></linearGradient><g id="flower"><ellipse cy="-12" rx="9" ry="13" fill="currentColor"/><ellipse cx="12" rx="13" ry="9" fill="currentColor"/><ellipse cy="12" rx="9" ry="13" fill="currentColor"/><ellipse cx="-12" rx="13" ry="9" fill="currentColor"/><circle r="8" fill="#e6bc66"/><circle cx="-2" cy="-2" r="3" fill="#ffe3a3"/></g></defs>
+  <ellipse cx="75" cy="156" rx="58" ry="9" fill="#567547" opacity=".12"/>
+  <path d="M15 143Q0 112 27 107Q18 79 49 79Q61 58 84 77Q109 65 119 93Q149 90 141 125Q151 147 123 153L36 155Q18 154 15 143Z" fill="url(#bush)"/>
+  <path d="M44 132L39 67M78 131L82 44M108 137L117 82" stroke="#6f926e" stroke-width="5" stroke-linecap="round"/>
+  <path d="M76 108Q48 112 56 90Q75 90 76 108M44 116Q61 99 66 112Q62 124 44 124M110 124Q91 110 94 103Q114 105 110 124" fill="#76996f"/>
+  <use href="#flower" transform="translate(38 65) scale(.85)" color="#f5c5b4"/>
+  <use href="#flower" transform="translate(83 44)" color="#fff7e4"/>
+  <use href="#flower" transform="translate(118 82) scale(.75)" color="#ead8b0"/>
+  <circle cx="31" cy="142" r="4" fill="#e9b89a"/><circle cx="127" cy="136" r="4" fill="#f5e7b4"/>
+</svg>

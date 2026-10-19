@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#f8f6ed" />
+  <meta name="theme-color" content="#faf6ec" />
   <meta name="description" content="めをとじたら、どうぶつたちがかくれんぼ。カメラは端末の中だけで使う、親子の小さなあそび。" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -17,7 +17,7 @@
 </head>
 <body>
   <header class="app-header">
-    <span class="brand"><span aria-hidden="true">🌱</span> みーつけた</span>
+    <span class="brand"><span class="little-flower" aria-hidden="true"></span> みーつけた</span>
     <button id="stopButton" class="text-button" type="button" hidden>おしまい</button>
   </header>
   <main class="app">
@@ -27,28 +27,42 @@
     </section>
     <section class="card welcome" id="welcomeCard">
       <p class="eyebrow">ちいさな もりの かくれんぼ</p>
-      <div class="welcome-friends" aria-hidden="true"><span>🐻</span><span>🐰</span><span>🐱</span></div>
-      <h1>かくれんぼ<br>しよう！</h1>
-      <p id="message" role="status">「あそぶ」を押して、お顔をうつしてね。</p>
-      <button id="startButton" class="primary" type="button">あそぶ <span aria-hidden="true">→</span></button>
-      <p class="privacy">カメラは この端末の中だけで使います。<br>写真を保存したり、送ったりしません。</p>
+      <h1>みー<span>つけた</span><i>！</i></h1>
+      <p class="welcome-subtitle">おめめを とじたら、はじまるよ。</p>
+      <div class="welcome-meadow">
+        <div class="sun" aria-hidden="true"><span></span></div>
+        <div class="cloud cloud-one" aria-hidden="true"></div><div class="cloud cloud-two" aria-hidden="true"></div>
+        <p id="friendGreeting" class="friend-greeting" role="status">いっしょに あそぼ！</p>
+        <div class="welcome-friends">
+          <button class="welcome-friend" type="button" data-friend="bear" aria-label="くまちゃんを なでなで"><span class="plush" data-animal="bear" aria-hidden="true"></span></button>
+          <button class="welcome-friend" type="button" data-friend="rabbit" aria-label="うさちゃんを なでなで"><span class="plush" data-animal="rabbit" aria-hidden="true"></span></button>
+          <button class="welcome-friend" type="button" data-friend="cat" aria-label="ねこちゃんを なでなで"><span class="plush" data-animal="cat" aria-hidden="true"></span></button>
+        </div>
+        <img class="meadow-flowers flowers-left" src="./assets/flowers.svg" alt="" width="70" height="79" />
+        <img class="meadow-flowers flowers-right" src="./assets/flowers.svg" alt="" width="55" height="62" />
+        <span class="meadow-note">どうぶつを なでてみてね</span>
+      </div>
+      <p id="message" role="status">お顔を うつして、かくれんぼしよう。</p>
+      <button id="startButton" class="primary" type="button"><span class="button-label">あそぶ</span><span class="button-arrow" aria-hidden="true">→</span></button>
+      <p class="privacy"><span class="privacy-dot" aria-hidden="true"></span>写真は 保存も 送信も しません</p>
     </section>
 
-    <section id="characterSelect" class="card" aria-labelledby="characterTitle" hidden>
-      <p class="eyebrow">お顔 みーつけた！</p>
+    <section id="characterSelect" class="card character-select" aria-labelledby="characterTitle" hidden>
+      <p class="eyebrow"><span class="little-flower" aria-hidden="true"></span> お顔 みーつけた！</p>
       <h2 id="characterTitle">どの子と あそぶ？</h2>
       <p id="characterMessage">いっしょに遊ぶ子を えらんでね。</p>
       <div class="characters">
-        <button class="character" type="button" data-character="rabbit"><span class="character-face" aria-hidden="true">🐰</span><span>うさちゃん</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
-        <button class="character" type="button" data-character="bear"><span class="character-face" aria-hidden="true">🐻</span><span>くまちゃん</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
-        <button class="character" type="button" data-character="cat"><span class="character-face" aria-hidden="true">🐱</span><span>ねこちゃん</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
+        <button class="character" type="button" data-character="rabbit"><span class="character-face plush" data-animal="rabbit" aria-hidden="true"></span><span class="character-name">うさちゃん</span><span class="character-personality">ぴょんっと ごあいさつ</span><span class="choose-mark" aria-hidden="true">あそぼ →</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
+        <button class="character" type="button" data-character="bear"><span class="character-face plush" data-animal="bear" aria-hidden="true"></span><span class="character-name">くまちゃん</span><span class="character-personality">ぎゅっと なかよし</span><span class="choose-mark" aria-hidden="true">あそぼ →</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
+        <button class="character" type="button" data-character="cat"><span class="character-face plush" data-animal="cat" aria-hidden="true"></span><span class="character-name">ねこちゃん</span><span class="character-personality">にゃんっと ごきげん</span><span class="choose-mark" aria-hidden="true">あそぼ →</span><span class="sleep-mark" aria-hidden="true">z z z</span></button>
       </div>
       <p id="sleepMessage" class="sleep-message" role="status">暗いから、みんな眠くなっちゃったみたい。</p>
+      <div class="how-to-play"><span><b>1</b>おめめを とじる</span><span><b>2</b>かくれたら さがす</span></div>
       <p class="small-note">お顔を カメラに うつしたままでね。</p>
     </section>
 
     <section id="gameCard" class="card game-card" data-phase="ready" aria-label="かくれんぼゲーム" hidden>
-      <p class="eyebrow" id="roundLabel">1かいめ</p>
+      <p class="eyebrow round-label" id="roundLabel">1かいめ</p>
       <h2 id="gameTitle">かくれんぼしよう！</h2>
       <p class="game-instruction" id="gameInstruction" role="status">めをとじてね。</p>
       <div class="game-clock">
@@ -56,19 +70,25 @@
         <span class="game-clock-caption">もくひょう <span id="goalSeconds">10</span>びょう</span>
       </div>
       <div id="gameProgress" class="game-progress" role="progressbar" aria-label="目を閉じられた時間" aria-valuemin="0" aria-valuenow="0" aria-valuemax="10"><div id="progressFill"></div></div>
-      <div class="forest" aria-hidden="true">
-        <span class="forest-cloud">☁</span><span class="forest-tree tree-left">🌲</span>
-        <div id="gameCharacter" class="game-character"><span>🐰</span></div>
-        <span class="forest-tree tree-right">🌳</span><span class="forest-flower">🌼</span>
+      <div class="forest">
+        <div class="sun" aria-hidden="true"><span></span></div>
+        <div class="cloud cloud-one" aria-hidden="true"></div><div class="cloud cloud-two" aria-hidden="true"></div>
+        <span class="forest-whisper" aria-hidden="true">こっそり、こっそり。</span>
+        <div class="celebration" aria-hidden="true"><i>♡</i><i>✦</i><i>♡</i><i>✧</i><i>✦</i><i>♡</i></div>
+        <button id="gameCharacter" class="game-character" type="button" aria-label="うさちゃんを なでなで"><span class="plush" data-animal="rabbit" aria-hidden="true"></span><span class="pet-heart" aria-hidden="true">♡</span></button>
+        <div id="hidingChoices" class="hiding-choices" aria-label="どこにかくれたかな？">
+          <button class="hiding-spot" data-spot="tree" type="button" aria-label="きのかげを さがす" disabled><img src="./assets/tree.svg" width="150" height="170" alt="" /><span class="spot-label">きのかげ</span><span class="spot-empty" aria-hidden="true">いないね</span></button>
+          <button class="hiding-spot" data-spot="house" type="button" aria-label="おうちを さがす" disabled><img src="./assets/house.svg" width="150" height="170" alt="" /><span class="spot-label">おうち</span><span class="spot-empty" aria-hidden="true">いないね</span></button>
+          <button class="hiding-spot" data-spot="flower" type="button" aria-label="おはなを さがす" disabled><img src="./assets/flowers.svg" width="150" height="170" alt="" /><span class="spot-label">おはな</span><span class="spot-empty" aria-hidden="true">いないね</span></button>
+        </div>
+        <figure id="peekPhoto" class="peek-photo" hidden>
+          <canvas id="peekCanvas" width="0" height="0" role="img" aria-label="いま目を開けたときのお顔"></canvas>
+          <figcaption>みーちゃった！</figcaption>
+        </figure>
       </div>
-      <figure id="peekPhoto" class="peek-photo" hidden>
-        <canvas id="peekCanvas" width="0" height="0" role="img" aria-label="いま目を開けたときのお顔"></canvas>
-        <figcaption>みーちゃった！</figcaption>
-      </figure>
-      <div id="hidingChoices" class="hiding-choices" aria-label="どこにかくれたかな？" hidden>
-        <button class="hiding-spot" data-spot="tree" type="button"><span aria-hidden="true">🌳</span>きのかげ</button>
-        <button class="hiding-spot" data-spot="house" type="button"><span aria-hidden="true">🏠</span>おうち</button>
-        <button class="hiding-spot" data-spot="flower" type="button"><span aria-hidden="true">🌷</span>おはな</button>
+      <div id="foundReward" class="found-reward" hidden>
+        <div id="friendFlowers" class="friend-flowers" aria-hidden="true"><span class="little-flower"></span><span class="little-flower"></span><span class="little-flower"></span><span class="little-flower"></span><span class="little-flower"></span><span class="little-flower"></span></div>
+        <p>なかよしの おはなが さいたよ！</p>
       </div>
       <p id="guessFeedback" class="guess-feedback" role="status"></p>
       <p id="restMessage" class="small-note" hidden>おやすみ。カメラも おしまいにしたよ。</p>
