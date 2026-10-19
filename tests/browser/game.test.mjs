@@ -2,6 +2,7 @@ import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { chromium, webkit } from "playwright";
 import { mkdir } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { createServer } from "../../scripts/serve.mjs";
 
 let server;
@@ -15,7 +16,7 @@ before(async () => {
 after(async () => { await new Promise(resolve => server.close(resolve)); });
 
 // All pixels are drawn shapes. No real camera, human face or photograph is used.
-async function fixture(browserType, { night = false, dark = false, deny = false } = {}) {
+async function fixture(browserType, { night = false, dark = false, deny = false, nativeVideoTime = false } = {}) {
   const browser = await browserType.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 },
     deviceScaleFactor: 1, serviceWorkers: "block", locale: "ja-JP", timezoneId: "Asia/Tokyo" });
@@ -24,9 +25,10 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
   const requests = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("request", request => requests.push({ url: request.url(), method: request.method() }));
-  await page.addInitScript(({ dark, deny }) => {
+  await page.addInitScript(({ dark, deny, nativeVideoTime }) => {
     window.__sensor = { eye: "open", face: true, dark, deny, freeze: false };
     window.__streams = [];
+    window.__cameraSessions = [];
     window.__closedDetectors = 0;
     window.__cameraDiagnostics = { startClicks: 0, gumCalls: 0, gumReturns: 0, playStarts: 0, playResolves: 0, playRejects: 0, modelStarts: 0, modelResolves: 0 };
     document.addEventListener("click", event => {
@@ -36,20 +38,33 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
     const nativePlay = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function (...args) {
       if (this.id !== "camera") return nativePlay.apply(this, args);
+      const session = window.__cameraSessions[window.__streams.indexOf(this.srcObject)];
+      // Observe native presentation, independent of the simulated currentTime
+      // used ONLY by deterministic game-state tests. Cancel on track.stop().
+      const source = this.srcObject;
+      const onFrame = () => {
+        if (this.srcObject !== source || source.getVideoTracks()[0].readyState === "ended") return;
+        session.frames++;
+        session.frameCallback = this.requestVideoFrameCallback(onFrame);
+      };
+      session.frameCallback = this.requestVideoFrameCallback(onFrame);
+      session.playStarts++;
       window.__cameraDiagnostics.playStarts++;
       try {
         return Promise.resolve(nativePlay.apply(this, args)).then(
-          value => { window.__cameraDiagnostics.playResolves++; return value; },
-          error => { window.__cameraDiagnostics.playRejects++; throw error; }
+          value => { session.playResolves++; window.__cameraDiagnostics.playResolves++; return value; },
+          error => { session.playRejects++; window.__cameraDiagnostics.playRejects++; throw error; }
         );
       } catch (error) {
-        window.__cameraDiagnostics.playRejects++;
+        session.playRejects++; window.__cameraDiagnostics.playRejects++;
         throw error;
       }
     };
     const syntheticGetUserMedia = async () => {
       window.__cameraDiagnostics.gumCalls++;
       if (window.__sensor.deny) throw new DOMException("Synthetic denial", "NotAllowedError");
+      const session = { paints: 0, frames: 0, inferences: 0, closedDetectors: 0,
+        playStarts: 0, playResolves: 0, playRejects: 0, frameCallback: null, timer: null };
       const canvas = document.createElement("canvas");
       canvas.width = 640; canvas.height = 480;
       const ctx = canvas.getContext("2d");
@@ -58,53 +73,65 @@ async function fixture(browserType, { night = false, dark = false, deny = false 
         ctx.fillRect(0, 0, 640, 480);
         ctx.fillStyle = "#e9ad73"; ctx.fillRect(230, 160, 180, 180);
         ctx.fillStyle = "#334b40"; ctx.fillRect(270, 210, 20, 20); ctx.fillRect(350, 210, 20, 20);
+        session.paints++;
       };
       paint();
       const stream = canvas.captureStream(15);
-      const timer = setInterval(paint, 100);
+      session.timer = setInterval(paint, 100);
       stream.getTracks().forEach(track => {
         const stop = track.stop.bind(track);
-        track.stop = () => { clearInterval(timer); stop(); };
+        track.stop = () => {
+          clearInterval(session.timer); session.timer = null;
+          if (session.frameCallback !== null) document.querySelector("#camera").cancelVideoFrameCallback(session.frameCallback);
+          session.frameCallback = null;
+          stop();
+        };
       });
       window.__streams.push(stream);
+      window.__cameraSessions.push(session);
       window.__cameraDiagnostics.gumReturns++;
       return stream;
     };
-    // WebKit can expose a fresh MediaDevices wrapper after a stopped capture
-    // stream; install the synthetic source on its prototype as well.
+    // Cover both access paths; wrapper replacement is not an observed cause.
     Object.defineProperty(Object.getPrototypeOf(navigator.mediaDevices), "getUserMedia",
       { configurable: true, value: syntheticGetUserMedia });
     Object.defineProperty(navigator.mediaDevices, "getUserMedia",
       { configurable: true, value: syntheticGetUserMedia });
     window.__syntheticGetUserMedia = syntheticGetUserMedia;
     const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
-    Object.defineProperty(HTMLMediaElement.prototype, "currentTime", {
+    window.__nativeVideoTime = () => descriptor.get.call(document.querySelector("#camera"));
+    if (!nativeVideoTime) Object.defineProperty(HTMLMediaElement.prototype, "currentTime", {
       get() { return this.id === "camera" ? (window.__sensor.freeze ? 0 : performance.now() / 1000) : descriptor.get.call(this); },
       set(value) { descriptor.set.call(this, value); },
     });
     Math.random = () => 0;
-  }, { dark, deny });
+  }, { dark, deny, nativeVideoTime });
   await page.route("**/vendor/vision_bundle.mjs", route => route.fulfill({ contentType: "text/javascript", body: `
     export class FilesetResolver { static async forVisionTasks() { return {}; } }
     export class FaceLandmarker {
+      constructor(session) { this.session = session; }
       static async createFromOptions() {
+        const session = window.__cameraSessions[window.__streams.indexOf(document.querySelector('#camera').srcObject)];
         window.__cameraDiagnostics.modelStarts++;
         if (window.__sensor.delayModel) await new Promise(resolve => { window.__resolveModel = resolve; });
         window.__cameraDiagnostics.modelResolves++;
-        return new FaceLandmarker();
+        return new FaceLandmarker(session);
       }
       detectForVideo() {
         window.__inferences = (window.__inferences || 0) + 1;
+        this.session.inferences++;
         if (!window.__sensor.face) return { faceLandmarks: [], faceBlendshapes: [] };
         const score = window.__sensor.eye === 'closed' ? .9 : window.__sensor.eye === 'open' ? .1 : .4;
         return { faceLandmarks: [[{x:.35,y:.3},{x:.65,y:.7}]], faceBlendshapes: [{categories: [
           {categoryName:'eyeBlinkLeft',score}, {categoryName:'eyeBlinkRight',score}
         ]}] };
       }
-      close() { window.__closedDetectors++; }
+      close() { window.__closedDetectors++; this.session.closedDetectors++; }
     }
   ` }));
-  await page.clock.install({ time: new Date(night ? "2026-10-17T12:00:00Z" : "2026-10-17T03:00:00Z") });
+  const time = new Date(night ? "2026-10-17T12:00:00Z" : "2026-10-17T03:00:00Z");
+  if (nativeVideoTime) await page.clock.setFixedTime(time); // Only wall-date is fixed; no time acceleration.
+  else await page.clock.install({ time });
   await page.goto(base);
   return { browser, context, page, errors, requests };
 }
@@ -112,22 +139,27 @@ async function startSyntheticCamera(page) {
   const previousInferences = await page.evaluate(() => window.__inferences ?? 0);
   const previousCalls = await page.evaluate(() => window.__cameraDiagnostics.gumCalls);
   await page.locator("#startButton").click();
-  // WebKit can await a fresh canvas frame in video.play() while the test clock is
-  // paused. Drive synthetic frame delivery *while* awaiting this session's first
-  // inference, rather than waiting for inference before advancing the clock.
-  let ready = false;
-  for (let attempt = 0; attempt < 50; attempt++) {
-    await page.clock.runFor(100);
-    ready = await page.evaluate(({previousInferences, previousCalls}) =>
-      window.__cameraDiagnostics.gumCalls > previousCalls &&
-      (window.__inferences ?? 0) > previousInferences, {previousInferences, previousCalls});
-    if (ready) break;
-  }
-  if (!ready) {
+  // runFor(5000) advances JS timers, NOT the native media pipeline. The old
+  // 50 x runFor(100) loop could expire in ~134ms of real time. Keep the clock
+  // running normally until this stream has played, presented fresh frames and
+  // supplied its own inference. The real-time deadline remains bounded at 5s.
+  const wallStart = performance.now();
+  try {
+    await page.waitForFunction(({previousInferences, previousCalls}) => {
+      const video = document.querySelector("#camera");
+      const session = window.__cameraSessions[window.__streams.indexOf(video.srcObject)];
+      return window.__cameraDiagnostics.gumCalls > previousCalls &&
+        session?.playResolves === 1 && session.frames >= 2 && session.inferences > 0 &&
+        video.readyState >= 2 && video.videoWidth > 0 && !video.paused &&
+        (window.__inferences ?? 0) > previousInferences;
+    }, {previousInferences, previousCalls}, {timeout:5000, polling:50});
+  } catch {
     const diagnostics = await page.evaluate(() => {
       const video = document.querySelector("#camera");
       return {
         counters: window.__cameraDiagnostics,
+        sessions: window.__cameraSessions,
+        nativeVideoTime: window.__nativeVideoTime(),
         inferences: window.__inferences ?? 0,
         cameraMethod: typeof navigator.mediaDevices?.getUserMedia,
         usingMock: navigator.mediaDevices?.getUserMedia === window.__syntheticGetUserMedia,
@@ -144,13 +176,16 @@ async function startSyntheticCamera(page) {
         message: document.querySelector("#message").textContent,
       };
     });
-    assert.fail(`synthetic camera did not infer in 5s of driven clock: ${JSON.stringify({ previousInferences, previousCalls, ...diagnostics })}`);
+    assert.fail(`camera startup failed within 5s real time: ${JSON.stringify({ wallMs: Math.round(performance.now() - wallStart), previousInferences, previousCalls, ...diagnostics })}`);
   }
+}
+async function startAndSampleLight(page) {
+  await startSyntheticCamera(page);
   // LightTracker needs several synthetic samples before character selection.
   await page.clock.runFor(3500);
 }
 async function startAndChoose(page, character = "rabbit", screenshotName = null) {
-  await startSyntheticCamera(page);
+  await startAndSampleLight(page);
   if (screenshotName) await page.screenshot({ path: `test-results/${screenshotName}-select.png` });
   await page.locator(`[data-character="${character}"]`).click();
   assert.equal(await page.locator("#gameCard").isVisible(), true);
@@ -383,7 +418,7 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       await page.locator("#gameCharacter").click();
       assert.match(await page.locator("#gameInstruction").innerText(), /ぽかぽか/);
       await page.locator("#endGameButton").click();
-      await startSyntheticCamera(page);
+      await startAndSampleLight(page);
       for (const button of await page.locator(".character").all()) {
         const box = await button.boundingBox();
         assert.ok(box.width >= 44 && box.height >= 44);
@@ -393,6 +428,48 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       await page.setViewportSize({width:1280,height:900});
       await page.screenshot({path:`test-results/${name}-desktop.png`});
       assert.deepEqual(f.errors, []);
+    } finally { await f.browser.close(); }
+  });
+
+  test(`${name}: native video starts, stops and restarts without accelerated time`, { timeout: 60000 }, async t => {
+    // Keep the real HTMLMediaElement.currentTime getter. Unlike game-state
+    // tests this scenario never calls clock.runFor, so fake timestamps cannot
+    // make a stalled video look like a working camera.
+    const f = await fixture(type, { nativeVideoTime: true });
+    const { page } = f;
+    try {
+      for (const character of ["cat", "bear", "rabbit"]) {
+        await startSyntheticCamera(page);
+        await page.waitForFunction(() => !document.querySelector("#characterSelect").hidden,
+          null, {timeout:5000});
+        await page.locator(`[data-character="${character}"]`).click();
+        assert.equal(await page.locator("#gameCard").isVisible(), true);
+        const before = await page.evaluate(() => ({ time: document.querySelector("#camera").currentTime,
+          frames: window.__cameraSessions.at(-1).frames, inferences: window.__cameraSessions.at(-1).inferences }));
+        await page.waitForFunction(before => {
+          const session = window.__cameraSessions.at(-1);
+          return document.querySelector("#camera").currentTime > before.time &&
+            session.frames > before.frames && session.inferences > before.inferences;
+        }, before, {timeout:5000, polling:50});
+        await page.locator("#endGameButton").click();
+        assert.equal(await page.locator("#welcomeCard").isVisible(), true);
+        assert.equal(await page.locator("#cameraBubble").isVisible(), false);
+        assert.equal(await page.locator("#camera").evaluate(video => video.srcObject), null);
+        const stopped = await page.evaluate(() => ({ sessions: window.__cameraSessions,
+          tracks: window.__streams.map(stream => stream.getTracks().map(track => track.readyState)) }));
+        assert.ok(stopped.tracks.every(tracks => tracks.length === 1 && tracks[0] === "ended"));
+        assert.ok(stopped.sessions.every(session => session.closedDetectors === 1 &&
+          session.timer === null && session.frameCallback === null && session.playResolves === 1 && session.playRejects === 0));
+        // More than one inference interval: the old loop/source must stay dead.
+        await delay(350);
+        assert.deepEqual(await page.evaluate(() => window.__cameraSessions), stopped.sessions);
+        assert.equal(await page.locator("#peekCanvas").evaluate(canvas => canvas.width), 0);
+      }
+      assert.equal(await page.evaluate(() => window.__streams.length), 3);
+      t.diagnostic(JSON.stringify({ browser: name, sessions: await page.evaluate(() => window.__cameraSessions) }));
+      assert.deepEqual(f.errors, []);
+      assert.ok(f.requests.every(r => r.method === "GET" && r.url.startsWith(base)));
+      assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0);
     } finally { await f.browser.close(); }
   });
 }
