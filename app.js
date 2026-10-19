@@ -30,6 +30,35 @@ let photoTimer = null;
 let sleepTapTimer = null;
 let lastLightAt = -Infinity;
 let displayedMode = null;
+let affectionTimer = null;
+let affectionMessage = "";
+
+function clearAffection() {
+  clearTimeout(affectionTimer);
+  affectionTimer = null;
+  affectionMessage = "";
+  document.querySelectorAll(".is-loved").forEach(element => element.classList.remove("is-loved"));
+}
+
+function loveFriend(button, character, inGame = false) {
+  clearAffection();
+  const info = CHARACTERS[character];
+  const mode = startMode(lightTracker.state);
+  if (inGame) {
+    if (!game?.active || !game.facePresent || game.signalStale || game.reaction || !["ready", "found"].includes(game.phase)) return;
+    affectionMessage = info.pet;
+  } else {
+    text($("friendGreeting"), mode === "night" ? "すやすや…。また あしたね。" :
+      mode === "dark" ? "すやすや…。あかるくなったら あそぼ。" : info.greeting);
+  }
+  button.classList.add("is-loved");
+  affectionTimer = setTimeout(() => {
+    clearAffection();
+    text($("friendGreeting"), "いっしょに あそぼ！");
+    render();
+  }, 1500);
+  render();
+}
 
 function text(element, value) {
   if (element.textContent !== String(value)) element.textContent = String(value);
@@ -123,6 +152,7 @@ function render() {
   $("resumePanel").hidden = !needsResume;
   $("resumeButton").disabled = starting;
   $("startButton").disabled = starting || !!stream || needsResume;
+  text($("startButton").querySelector(".button-label"), starting ? "じゅんび中…" : "あそぶ");
   $("stopButton").hidden = !stream && !game && !starting && !needsResume;
   $("settingsFields").disabled = !!stream || starting || !!game || needsResume;
   applyStartMode();
@@ -133,28 +163,35 @@ function render() {
   $("gameCard").dataset.motion = view.motion;
   $("gameCard").dataset.quiet = String(Boolean(view.quiet));
   text($("roundLabel"), `${game.roundIndex + 1}かいめ`);
-  text($("gameTitle"), `${info.name}と かくれんぼ`);
-  text($("gameInstruction"), view.text);
+  text($("gameTitle"), game.phase === "found" ? "みーつけた！" : `${info.name}と かくれんぼ`);
+  const canPet = game.active && game.facePresent && !game.reaction && !game.signalStale && ["ready", "found"].includes(game.phase);
+  text($("gameInstruction"), canPet && affectionMessage ? affectionMessage : view.text);
   text($("secondsRemaining"), game.remainingSeconds);
   text($("goalSeconds"), game.targetMs / 1000);
-  text($("gameCharacter").firstElementChild, info.face);
+  $("gameCharacter").firstElementChild.dataset.animal = selectedCharacter;
+  $("gameCharacter").setAttribute("aria-label", `${info.name}を なでなで`);
+  $("gameCharacter").disabled = !canPet;
+  $("gameCharacter").setAttribute("aria-hidden", String(view.motion === "hidden"));
   const progress = Math.min(1, game.elapsedMs / game.targetMs);
   $("progressFill").style.width = `${progress * 100}%`;
   $("gameProgress").setAttribute("aria-valuemax", String(game.targetMs / 1000));
   $("gameProgress").setAttribute("aria-valuenow", String(Math.floor(game.elapsedMs / 1000)));
   $("gameProgress").setAttribute("aria-valuetext", `あと ${game.remainingSeconds}びょう`);
   $("gameCharacter").style.setProperty("--hide-progress", progress);
-  $("hidingChoices").hidden = game.phase !== "seeking";
+  $("hidingChoices").setAttribute("aria-hidden", String(game.phase !== "seeking"));
   for (const button of spotButtons) {
     const tried = game.triedSpots.has(button.dataset.spot);
-    button.disabled = tried || !game.active || !game.facePresent || game.signalStale;
+    button.disabled = game.phase !== "seeking" || tried || !game.active || !game.facePresent || game.signalStale;
     button.dataset.tried = String(tried);
   }
   $("nextRoundButton").hidden = game.phase !== "found";
   $("nextRoundButton").disabled = !game.active;
+  $("foundReward").hidden = game.phase !== "found";
+  [...$("friendFlowers").children].forEach((flower, index) => flower.classList.toggle("bloomed", index <= game.roundIndex));
   $("restMessage").hidden = game.phase !== "resting";
   text($("guessFeedback"), game.phase === "found" ? "もういっかい あそぶ？" :
-    game.phase === "seeking" && game.wrongGuess ? "そこには いないみたい。ほかを さがそう！" : "");
+    game.phase === "seeking" && game.wrongGuess ? "しーん…。ここには いないみたい。" :
+    game.phase === "seeking" ? "きになる ところを さわってみてね。" : "");
   if (game.reaction?.kind !== "peek" || !game.facePresent || !game.active) clearPhoto();
 }
 
@@ -173,6 +210,7 @@ async function createDetector() {
 }
 
 function releaseResources() {
+  clearAffection();
   cancelAnimationFrame(frameId);
   frameId = null;
   stream?.getTracks().forEach(track => track.stop());
@@ -314,6 +352,7 @@ function chooseCharacter(event) {
     return;
   }
   selectedCharacter = button.dataset.character;
+  clearAffection();
   screen = "game";
   game = new HideAndSeekGame();
   lastPhotoId = null;
@@ -322,6 +361,7 @@ function chooseCharacter(event) {
   lightTracker.stop();
   $("parentInfo").open = false;
   render();
+  window.scrollTo(0, 0);
 }
 
 function endGame() {
@@ -334,9 +374,11 @@ function endGame() {
   lastPhotoId = null;
   lightTracker.reset();
   displayedMode = null;
-  text($("message"), "「あそぶ」を押して、お顔をうつしてね。");
+  text($("message"), "また あそぼうね。みんな まってるよ。");
+  text($("friendGreeting"), "また なでなでしてね！");
   text($("resumeMessage"), "おかえり！ のこりの時間から あそべるよ。");
   render();
+  window.scrollTo(0, 0);
 }
 
 $("startButton").addEventListener("click", startCamera);
@@ -344,9 +386,17 @@ $("resumeButton").addEventListener("click", startCamera);
 $("stopButton").addEventListener("click", endGame);
 $("endGameButton").addEventListener("click", endGame);
 characterButtons.forEach(button => button.addEventListener("click", chooseCharacter));
-spotButtons.forEach(button => button.addEventListener("click", () => { game?.guess(button.dataset.spot); render(); }));
+document.querySelectorAll(".welcome-friend").forEach(button => {
+  button.addEventListener("click", () => loveFriend(button, button.dataset.friend));
+});
+$("gameCharacter").addEventListener("click", () => loveFriend($("gameCharacter"), selectedCharacter, true));
+spotButtons.forEach(button => button.addEventListener("click", () => {
+  game?.guess(button.dataset.spot);
+  render();
+  if (game?.phase === "found") window.scrollTo(0, 0);
+}));
 $("nextRoundButton").addEventListener("click", () => {
-  if (game?.nextRound()) { clearPhoto(); eyeTracker.reset(); render(); }
+  if (game?.nextRound()) { clearPhoto(); clearAffection(); eyeTracker.reset(); render(); window.scrollTo(0, 0); }
 });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) suspend();

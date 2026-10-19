@@ -35,3 +35,49 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Each matrix entry becomes a separate GitHub-hosted job on a fresh VM.
+  # Run sequentially to avoid concurrent browser-test resource contention.
+  webkit-stability:
+    name: WebKit regression (fresh VM ${{ matrix.attempt }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        attempt: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build offline site for isolated browser fixture
+        run: npm run build
+      - name: Install WebKit in fresh runner
+        run: npx playwright install --with-deps webkit
+      - name: Diagnose native media versus virtual clock (one VM)
+        if: matrix.attempt == 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/browser/diagnose-camera.mjs | tee camera-diagnostic.jsonl
+      - name: Run all four WebKit regression scenarios
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-concurrency=1 --test-name-pattern='^WebKit:' tests/browser/game.test.mjs | tee webkit-regression.tap
+          # Ensure a zero-match filter cannot be mistaken for success.
+          grep -Eq '^# pass 4$' webkit-regression.tap
+          grep -Eq '^# fail 0$' webkit-regression.tap
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webkit-regression-tap-${{ matrix.attempt }}
+          path: |
+            webkit-regression.tap
+            camera-diagnostic.jsonl
+          if-no-files-found: ignore
+          retention-days: 7

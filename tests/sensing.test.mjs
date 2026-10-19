@@ -57,7 +57,7 @@ test("light threshold is configurable and a long gap cannot reuse old samples", 
 
 test("all characters have complete reactions, with daylight darkness distinct from night", () => {
   for (const [key, c] of Object.entries(CHARACTERS)) {
-    for (const field of ["name", "face", "ready", "peek", "returned", "found", "dark"]) assert.ok(c[field]);
+    for (const field of ["name", "greeting", "pet", "ready", "peek", "returned", "found", "dark"]) assert.ok(c[field]);
     assert.ok(!c.dark.includes("夜"));
     const g = new HideAndSeekGame();
     assert.equal(gamePresentation(g, key).text, c.ready);

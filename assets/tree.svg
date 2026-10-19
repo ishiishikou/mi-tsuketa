@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 170">
+  <defs><linearGradient id="leaf" x2=".8" y2="1"><stop stop-color="#bbd8a4"/><stop offset="1" stop-color="#7ea880"/></linearGradient><linearGradient id="wood" x2="1" y2="0"><stop stop-color="#c8a182"/><stop offset="1" stop-color="#ad8468"/></linearGradient></defs>
+  <ellipse cx="76" cy="159" rx="49" ry="8" fill="#567547" opacity=".12"/>
+  <path d="M63 87Q61 133 59 153Q76 160 91 153L85 86Z" fill="url(#wood)"/>
+  <path d="M73 144L76 93M74 123L64 115" fill="none" stroke="#9c735b" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+  <path d="M24 109C-2 93 9 67 26 62C11 32 43 18 57 24C69-3 104 8 109 31C142 26 151 58 132 73C155 100 128 124 104 117C82 134 58 125 54 116C41 121 30 116 24 109Z" fill="url(#leaf)" stroke="#719a70" stroke-width="2"/>
+  <path d="M25 67Q15 85 33 97M46 39Q58 28 67 35M109 89Q126 82 127 66" fill="none" stroke="#e5f0d4" stroke-width="5" opacity=".5" stroke-linecap="round"/>
+  <circle cx="48" cy="78" r="6" fill="#e6a58a"/><circle cx="102" cy="49" r="6" fill="#e6a58a"/>
+  <path d="M41 152Q34 136 36 133Q49 139 48 154M98 155Q101 138 109 138Q111 150 98 155" fill="#91ad7f"/>
+</svg>
