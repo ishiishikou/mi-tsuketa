@@ -36,7 +36,8 @@ historical stalled sample. MediaDevices wrapper replacement was not observed.
   close, `srcObject` must clear, and counters must stay unchanged after stop.
 - Preserve full-round, peek cleanup, face recovery, six-width animation-boundary,
   tap-target and reduced-motion assertions. No retries, skips or relaxed asserts
-  are added. The independent-VM workflow now requires all three WebKit scenarios.
+  are added. The independent-VM workflow requires all four WebKit scenarios,
+  including the separate decorative-overflow regression described below.
 - Diagnostics contain only scalar counters/states and synthetic-source data;
   no camera pixels, face images or face features are logged.
 
@@ -47,9 +48,19 @@ but exposed a separate layout-test failure: at width 320, the animation-start
 sample was 8.016px left of center with identity transform. The test restarted
 celebration by changing `data-motion` away from `happy`, which also changed
 `left` from 26% to 23% and width from 48% to 54%. This introduced an artificial
-layout transition (3% of the 276px forest is 8.28px). Restart only `animation-name`
-instead, preserving the actual found layout. Keep every center/boundary assertion
-and add computed left and transition-state diagnostics to the same sample.
+layout transition (3% of the 276px forest is 8.28px). Restarting only
+`animation-name` preserves the found layout, but did **not** solve the failure:
+run 39238789024 still measured -8.016px, with correct computed left (71.75px)
+and no active transitions. The transition-only hypothesis is therefore insufficient.
+
+The forest used `overflow:hidden` around deliberately oversized decorations.
+That clips visually but still permits internal scrolling, unlike `overflow:clip`.
+Change the forest to `clip` and verify that programmatic scroll, focus and
+scrollIntoView cannot pan it at all six widths. The layout-only regression also
+logs a control using the old `hidden` style and an 8px scroll to compare with the
+observed displacement. The integrated animation samples record and assert zero
+forest scroll offsets; no test resets offsets to hide a failure. The initiating
+browser focus/resize sequence for historical failures was not directly recorded.
 
 Run the usual `npm run check`, `npm test`, `npm run build`, and
 `npm run test:browser`. The PR workflow also runs all WebKit scenarios on three
@@ -60,4 +71,5 @@ not a pass/fail substitute for integration tests.
 See Issue #17 and PR #18 for the exact final SHA, CI result and review handoff.
 Synthetic browser coverage is not iPhone Safari hardware validation; real-camera,
 PWA and device-specific behavior remain in #12/#13. No application runtime
-changes are made by this test synchronization fix.
+changes are made to the camera lifecycle. The only application change is the
+forest overflow policy; the camera synchronization fix is test-only.

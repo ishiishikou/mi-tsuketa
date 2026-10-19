@@ -219,6 +219,8 @@ async function checkCelebrationAtWidths(page, browserName) {
       animation: animation ? {state: animation.playState, currentTime: animation.currentTime,
         name: animation.animationName} : null,
       left: getComputedStyle(friend).left,
+      forestScroll: {left: forest.scrollLeft, top: forest.scrollTop,
+        width: forest.scrollWidth, clientWidth: forest.clientWidth},
       transitions: friend.getAnimations().filter(a => a.transitionProperty).map(a =>
         ({property: a.transitionProperty, state: a.playState, time: a.currentTime})),
       friend: {top: friendRect.top, bottom: friendRect.bottom,
@@ -245,6 +247,8 @@ async function checkCelebrationAtWidths(page, browserName) {
         `the stationary found friend must be centered: ${detail}`);
     assert.ok(observation.headingTop >= 0, `finding a friend keeps its heading on screen: ${detail}`);
     assert.equal(observation.scrollY, 0, `round transitions do not scroll: ${detail}`);
+    assert.equal(observation.forestScroll.left, 0, `the decorative scene must not pan horizontally: ${detail}`);
+    assert.equal(observation.forestScroll.top, 0, `the decorative scene must not pan vertically: ${detail}`);
   };
   for (const width of widths) {
     await page.setViewportSize({width, height:844});
@@ -317,6 +321,43 @@ async function checkCelebrationAtWidths(page, browserName) {
 }
 
 for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
+  test(`${name}: decorative forest cannot scroll away from its centered friend`, async t => {
+    const f = await fixture(type);
+    try {
+      // Isolate layout from camera/game logic; use the shipped DOM and CSS.
+      await f.page.evaluate(() => {
+        document.querySelector("#welcomeCard").hidden = true;
+        const card = document.querySelector("#gameCard");
+        card.hidden = false; card.dataset.phase = "found"; card.dataset.motion = "happy";
+      });
+      await f.page.emulateMedia({reducedMotion: "reduce"});
+      for (const width of [320, 390, 414, 430, 499, 500]) {
+        await f.page.setViewportSize({width, height:844});
+        const result = await f.page.evaluate(() => {
+          const forest = document.querySelector(".forest"), friend = document.querySelector("#gameCharacter");
+          const measure = () => {
+            const a = friend.getBoundingClientRect(), b = forest.getBoundingClientRect();
+            return {left: forest.scrollLeft, top: forest.scrollTop,
+              offset: (a.left + a.right - b.left - b.right) / 2};
+          };
+          // Diagnostic control: old overflow:hidden allows an 8px internal pan
+          // while computed left remains correct. Never reset scroll to pass.
+          forest.style.overflow = "hidden";
+          forest.scrollTo(8, 8);
+          const oldOverflow = measure();
+          forest.style.removeProperty("overflow");
+          forest.scrollTo(8, 8);
+          friend.disabled = false;
+          friend.focus(); friend.scrollIntoView({block:"nearest", inline:"nearest"});
+          return {oldOverflow, shipped: measure()};
+        });
+        t.diagnostic(JSON.stringify({width, ...result}));
+        assert.equal(result.shipped.left, 0, JSON.stringify(result));
+        assert.equal(result.shipped.top, 0, JSON.stringify(result));
+        assert.ok(Math.abs(result.shipped.offset) <= 1, JSON.stringify(result));
+      }
+    } finally { await f.browser.close(); }
+  });
   test(`${name}: full round, peek image cleanup, face recovery and next round`, { timeout: 90000 }, async () => {
     const f = await fixture(type);
     const { page } = f;

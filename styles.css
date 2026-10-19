@@ -101,7 +101,8 @@ body:has(#cameraBubble:not([hidden])) .app { padding-top: 39px; }
 .game-clock .game-clock-caption { font-size: 9px; color: #8e937d; margin-left: 9px; }
 .game-progress { height: 6px; margin: 12px 24px 0; background: #eeeede; border-radius: 20px; overflow: hidden; }
 #progressFill { height: 100%; width: 0; background: #b1c496; border-radius: inherit; transition: width .2s linear; }
-.forest { position: relative; height: clamp(245px, 66vw, 310px); overflow: hidden; border-radius: 25px; margin: 12px 0 0; isolation: isolate; background: linear-gradient(#edf3e7, #f0f3e6 60%, #e9eedb); }
+/* Decorative overflow must be clipped, never panned by focus/scrollIntoView. */
+.forest { position: relative; height: clamp(245px, 66vw, 310px); overflow: clip; border-radius: 25px; margin: 12px 0 0; isolation: isolate; background: linear-gradient(#edf3e7, #f0f3e6 60%, #e9eedb); }
 .forest::before { content: ""; position: absolute; width: 130%; height: 44%; bottom: -14%; left: -20%; border-radius: 50%; background: #dce6c9; transform: rotate(7deg); z-index: -1; }
 .forest::after { content: ""; position: absolute; width: 90%; height: 28%; bottom: 0; right: -30%; border-radius: 50%; background: #e3eacb; transform: rotate(-15deg); z-index: -1; }
 .forest .sun { top: 17px; left: 19px; width: 37px; height: 37px; }
