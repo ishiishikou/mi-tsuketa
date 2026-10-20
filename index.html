@@ -18,7 +18,8 @@
 <body>
   <header class="app-header">
     <span class="brand"><span class="little-flower" aria-hidden="true"></span> みーつけた</span>
-    <button id="stopButton" class="text-button" type="button" hidden>おしまい</button>
+    <div class="header-actions"><button id="voiceToggle" class="text-button" type="button" aria-label="おしゃべり音声" aria-pressed="true">音あり</button>
+    <button id="stopButton" class="text-button" type="button" hidden>おしまい</button></div>
   </header>
   <main class="app">
     <section id="resumePanel" class="resume-panel" role="status" hidden>
@@ -107,6 +108,9 @@
       <p>お子さまのお顔が正面に映る位置で使ってください。閉じた目を確認した時間だけ数えます。途中で目を開けても、残り時間から続けられます。</p>
       <p>21:00〜翌6:00と、暗い場所では新しく遊べません。ゲーム開始後は明るさを判定しません。達成後も目を閉じていると静かに待ち、さらに約1分間閉眼が続いた場合はカメラを止めます。睡眠を診断するものではありません。</p>
       <p>ホーム画面に追加するには、Safariの共有ボタン →「ホーム画面に追加」。初回はオンラインで開き、下の準備完了を待ってください。端末がキャッシュを消した場合は再び通信が必要です。</p>
+      <p>どうぶつをタップすると合成音声でおしゃべりします。上の「音あり／音なし」で切り替えられます。目を閉じて隠れる間や、おやすみ中は静かに待ちます。</p>
+      <p id="voiceStatus" class="small-note" role="status">声の音量は端末で調整できます。</p>
+      <p class="small-note">音声：VOICEVOX:四国めたん・VOICEVOX:ずんだもん（合成音声）</p>
       <p id="offlineStatus" role="status">オフラインの準備中…</p>
       <p>映像は端末内で処理し、開眼時の写真は約1.6秒だけ表示して消去します。録画、画像の保存・送信、アクセス解析は行いません。</p>
       <details class="tuning">

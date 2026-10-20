@@ -205,3 +205,6 @@ input { width: 85px; min-height: 44px; border: 1px solid #bec9b1; border-radius:
 @media (max-width: 360px) { .app { padding-inline: 12px; } .app-header { padding-inline: 17px; } .brand { font-size: 13px; gap: 5px; } .character-name { font-size: 12px; } .character-personality { font-size: 7px; } .game-instruction { font-size: 12px; } .game-card { padding-inline: 9px; } .friend-greeting { font-size: 11px; padding-inline: 12px; } }
 @media (orientation: landscape) and (max-height: 500px) { .app { max-width: 680px; padding-right: 100px; } body:has(#cameraBubble:not([hidden])) .app { padding-top: 12px; } .welcome-meadow { height: 240px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .game-character.is-loved .pet-heart { opacity: 1; } }
+
+.header-actions { display: flex; align-items: center; flex-shrink: 0; }
+#voiceToggle { min-width: 44px; }
