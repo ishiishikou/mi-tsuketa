@@ -1,10 +1,12 @@
 import { HideAndSeekGame, PEEK_REACTION_MS } from "./game-core.mjs";
 import { EyeTracker, LightTracker, SENSOR_DEFAULTS, startMode } from "./sensing.mjs";
 import { CHARACTERS, NIGHT_MESSAGE, gamePresentation } from "./characters.mjs";
+import { SceneVoice } from "./voice.mjs";
 import { VERSION } from "./release.mjs";
 import { watchOfflineStatus } from "./offline-status.mjs";
 
 const $ = (id) => document.getElementById(id);
+const voice = new SceneVoice({ onUnavailable: () => text($("voiceStatus"), "声を再生できませんでした。音を入れ直すと、次の操作から試せます。") });
 const video = $("camera");
 const characterButtons = [...document.querySelectorAll(".character")];
 const spotButtons = [...document.querySelectorAll(".hiding-spot")];
@@ -51,6 +53,7 @@ function loveFriend(button, character, inGame = false) {
     text($("friendGreeting"), mode === "night" ? "すやすや…。また あしたね。" :
       mode === "dark" ? "すやすや…。あかるくなったら あそぼ。" : info.greeting);
   }
+  void voice.speak(character, inGame ? "pet" : mode === "night" ? "night" : mode === "dark" ? "dark" : "greeting");
   button.classList.add("is-loved");
   affectionTimer = setTimeout(() => {
     clearAffection();
@@ -157,6 +160,7 @@ function render() {
   $("settingsFields").disabled = !!stream || starting || !!game || needsResume;
   applyStartMode();
   if (!game) return;
+  voice.sync(game, selectedCharacter);
   const info = CHARACTERS[selectedCharacter];
   const view = gamePresentation(game, selectedCharacter);
   $("gameCard").dataset.phase = game.phase;
@@ -210,6 +214,7 @@ async function createDetector() {
 }
 
 function releaseResources() {
+  voice.stop();
   clearAffection();
   cancelAnimationFrame(frameId);
   frameId = null;
@@ -226,6 +231,7 @@ function releaseResources() {
 }
 
 function suspend() {
+  voice.stop();
   if (!stream && !starting && !game) return;
   ++sessionEpoch;
   starting = false;
@@ -341,6 +347,7 @@ function chooseCharacter(event) {
   applyStartMode();
   if (mode === "night" || mode === "dark") {
     text($("sleepMessage"), mode === "night" ? NIGHT_MESSAGE : CHARACTERS[button.dataset.character].dark);
+    void voice.speak(button.dataset.character, mode === "night" ? "night" : "dark");
     clearTimeout(sleepTapTimer);
     characterButtons.forEach(b => b.classList.remove("sleep-tap"));
     button.classList.add("sleep-tap");
@@ -354,6 +361,7 @@ function chooseCharacter(event) {
   selectedCharacter = button.dataset.character;
   clearAffection();
   screen = "game";
+  voice.reset();
   game = new HideAndSeekGame();
   lastPhotoId = null;
   clearPhoto();
@@ -370,6 +378,7 @@ function endGame() {
   needsResume = false;
   releaseResources();
   game = null;
+  voice.reset();
   screen = "welcome";
   lastPhotoId = null;
   lightTracker.reset();
@@ -381,6 +390,15 @@ function endGame() {
   window.scrollTo(0, 0);
 }
 
+document.addEventListener("click", event => {
+  if (event.target.closest?.("#startButton, #resumeButton, .welcome-friend, .character, #gameCharacter, .hiding-spot, #nextRoundButton")) voice.unlock();
+}, true);
+$("voiceToggle").addEventListener("click", () => {
+  voice.setEnabled(!voice.enabled);
+  $("voiceToggle").setAttribute("aria-pressed", String(voice.enabled));
+  text($("voiceToggle"), voice.enabled ? "音あり" : "音なし");
+  text($("voiceStatus"), voice.enabled ? "次の操作からおしゃべりします。" : "声を止めました。文字だけでも遊べます。");
+});
 $("startButton").addEventListener("click", startCamera);
 $("resumeButton").addEventListener("click", startCamera);
 $("stopButton").addEventListener("click", endGame);
