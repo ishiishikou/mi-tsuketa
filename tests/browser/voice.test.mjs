@@ -1,18 +1,15 @@
-import test, { before, after } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { createServer } from '../../scripts/serve.mjs';
-let server, base;
-before(async () => {
-  server = createServer();
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  base = `http://127.0.0.1:${server.address().port}/mi-tsuketa/`;
-});
-after(async () => { await new Promise(resolve => server.close(resolve)); });
 for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit })) {
   test(`${name} voice: actual MP3 decode, gesture playback, mute, background and offline`, async () => {
-    const browser = await type.launch();
+    const server = createServer();
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${server.address().port}/mi-tsuketa/`;
+    let browser;
     try {
+      browser = await type.launch();
       const context = await browser.newContext({viewport:{width:320,height:740}, locale:'ja-JP'});
       const page = await context.newPage();
       const errors = [];
@@ -68,13 +65,28 @@ for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit }
         if (clip.cue === 'returned') assert.ok(clip.duration < .9);
       }
       await page.waitForFunction(() => navigator.serviceWorker.controller, null, {timeout:30000});
-      await context.setOffline(true);
+      // WebKit's setOffline kills even local Service Worker responses:
+      // https://github.com/microsoft/playwright/issues/42775
+      // Stop the actual origin for both engines. A fresh context without a
+      // worker must fail, proving reload/playback cannot fall back to network.
+      await new Promise(resolve => {
+        server.close(resolve);
+        server.closeAllConnections();
+      });
+      const negative = await browser.newContext({ serviceWorkers: 'block' });
+      const uncached = await negative.newPage();
+      await assert.rejects(uncached.goto(base, { timeout: 5000 }));
+      await negative.close();
+      if (name === 'Chromium') await context.setOffline(true);
       await page.reload();
       const prior = await page.evaluate(() => window.__audio.starts);
       await page.locator('[data-friend="cat"]').click();
       await page.waitForFunction(n => window.__audio.starts > n, prior);
       assert.deepEqual(errors, []);
       await page.screenshot({path:`test-results/${name.toLowerCase()}-voice-320.png`});
-    } finally { await browser.close(); }
+    } finally {
+      await browser?.close();
+      if (server.listening) await new Promise(resolve => server.close(resolve));
+    }
   });
 }
