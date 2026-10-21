@@ -68,14 +68,17 @@ for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit }
         const manifest = await (await fetch('./assets/voices/countdown-manifest.json')).json();
         const context = new AudioContext();
         try {
-          return await Promise.all(manifest.clips.map(async clip => {
+          const decoded = [];
+          // Sequential decodes avoid overwhelming iOS/WebKit audio decoders.
+          for (const clip of manifest.clips) {
             const response = await fetch('./' + clip.file);
             if (!response.ok) throw new Error('missing ' + clip.file);
             const buffer = await context.decodeAudioData(await response.arrayBuffer());
             let peak = 0;
             for (const sample of buffer.getChannelData(0)) peak = Math.max(peak, Math.abs(sample));
-            return { seconds:clip.remainingSeconds, duration:buffer.duration, peak };
-          }));
+            decoded.push({ seconds:clip.remainingSeconds, duration:buffer.duration, peak });
+          }
+          return decoded;
         } finally { await context.close(); }
       });
       assert.equal(countdown.length,60);
@@ -101,6 +104,15 @@ for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit }
       const prior = await page.evaluate(() => window.__audio.starts);
       await page.locator('[data-friend="cat"]').click();
       await page.waitForFunction(n => window.__audio.starts > n, prior);
+      const offlineCountdown = await page.evaluate(async () => {
+        const response = await fetch('./assets/voices/countdown/rabbit/10.mp3');
+        if (!response.ok) throw new Error('offline countdown missing');
+        const audio = new AudioContext();
+        try {
+          return (await audio.decodeAudioData(await response.arrayBuffer())).duration;
+        } finally { await audio.close(); }
+      });
+      assert.ok(offlineCountdown > .15 && offlineCountdown < 1.05);
       assert.deepEqual(errors, []);
       await page.screenshot({path:`test-results/${name.toLowerCase()}-voice-320.png`});
     } finally {
