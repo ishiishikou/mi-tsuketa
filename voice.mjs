@@ -10,6 +10,17 @@ export function gameVoiceCue(game) {
   return null;
 }
 
+// Only progress recorded by the existing closed-eye state machine may speak.
+export function countdownVoiceCue(game) {
+  if (!game?.active || game.phase !== 'counting' || game.signalStale ||
+      game.facePresent !== true || game.eyeState !== 'closed' ||
+      game.previousEligible !== true ||
+      !Number.isFinite(game.targetMs) || !Number.isFinite(game.elapsedMs)) return null;
+  const remaining = Math.ceil((game.targetMs - game.elapsedMs) / 1000);
+  if (remaining < 1 || remaining > 60 || (remaining > 10 && remaining % 5 !== 0)) return null;
+  return { clip: `count-${remaining}`, key: `count:${game.roundIndex}:${remaining}` };
+}
+
 export class SceneVoice {
   constructor({ contextFactory = () => new (globalThis.AudioContext || globalThis.webkitAudioContext)(),
     fetchAudio = url => fetch(url), now = () => performance.now(), onUnavailable = () => {} } = {}) {
@@ -63,11 +74,15 @@ export class SceneVoice {
     const started = this.now();
     const key = `${character}/${clip}`;
     // Only fixed internal identifiers can form a URL.
+    const isCount = /^count-(?:[1-9]|10|15|20|25|30|35|40|45|50|55|60)$/.test(clip);
     if (!['rabbit', 'bear', 'cat'].includes(character) ||
-        !['greeting', 'pet', 'ready', 'peek', 'returned', 'found', 'dark', 'night', 'missing', 'seeking'].includes(clip)) return;
+        (!isCount && !['greeting', 'pet', 'ready', 'peek', 'returned', 'found', 'dark', 'night', 'missing', 'seeking'].includes(clip))) return;
+    const filename = isCount
+      ? `./assets/voices/countdown/${character}/${clip.slice(6)}.mp3`
+      : `./assets/voices/${character}/${clip === "peek" ? "noticed" : clip}.mp3`;
     try {
       if (!this.buffers.has(key)) {
-        const pending = this.fetchAudio(new URL(`./assets/voices/${character}/${clip === "peek" ? "noticed" : clip}.mp3`, import.meta.url))
+        const pending = this.fetchAudio(new URL(filename, import.meta.url))
           .then(response => {
             if (!response.ok) throw new Error('audio-unavailable');
             return response.arrayBuffer();
@@ -93,7 +108,13 @@ export class SceneVoice {
   }
 
   sync(game, character) {
-    const cue = gameVoiceCue(game);
+    const count = countdownVoiceCue(game);
+    // Between five-second milestones, let the current encouragement finish.
+    // A pause, stale/unknown signal, or phase exit must still stop immediately.
+    if (!count && game?.active && game.phase === 'counting' &&
+        !game.signalStale && game.facePresent === true &&
+        game.eyeState === 'closed' && game.previousEligible === true) return;
+    const cue = count ?? gameVoiceCue(game);
     const key = cue ? `${character}:${cue.key}` : null;
     if (this.scene === key) return;
     this.scene = key;

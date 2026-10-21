@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { createServer } from '../../scripts/serve.mjs';
 for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit })) {
-  test(`${name} voice: actual MP3 decode, gesture playback, mute, background and offline`, async () => {
+  test(`${name} voice: all scene and countdown MP3s, gesture playback, mute, background and offline`, async () => {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}/mi-tsuketa/`;
@@ -64,6 +64,28 @@ for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit }
         if (clip.cue === 'peek') assert.ok(clip.duration < 1.6);
         if (clip.cue === 'returned') assert.ok(clip.duration < .9);
       }
+      const countdown = await page.evaluate(async () => {
+        const manifest = await (await fetch('./assets/voices/countdown-manifest.json')).json();
+        const context = new AudioContext();
+        try {
+          const decoded = [];
+          // Sequential decodes avoid overwhelming iOS/WebKit audio decoders.
+          for (const clip of manifest.clips) {
+            const response = await fetch('./' + clip.file);
+            if (!response.ok) throw new Error('missing ' + clip.file);
+            const buffer = await context.decodeAudioData(await response.arrayBuffer());
+            let peak = 0;
+            for (const sample of buffer.getChannelData(0)) peak = Math.max(peak, Math.abs(sample));
+            decoded.push({ seconds:clip.remainingSeconds, duration:buffer.duration, peak });
+          }
+          return decoded;
+        } finally { await context.close(); }
+      });
+      assert.equal(countdown.length,60);
+      for (const clip of countdown) {
+        assert.ok(clip.peak > .01 && clip.peak < 1);
+        assert.ok(clip.duration > .15 && clip.duration < (clip.seconds <= 10 ? 1.05 : 4.5));
+      }
       await page.waitForFunction(() => navigator.serviceWorker.controller, null, {timeout:30000});
       // WebKit's setOffline kills even local Service Worker responses:
       // https://github.com/microsoft/playwright/issues/42775
@@ -82,6 +104,15 @@ for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit }
       const prior = await page.evaluate(() => window.__audio.starts);
       await page.locator('[data-friend="cat"]').click();
       await page.waitForFunction(n => window.__audio.starts > n, prior);
+      const offlineCountdown = await page.evaluate(async () => {
+        const response = await fetch('./assets/voices/countdown/rabbit/10.mp3');
+        if (!response.ok) throw new Error('offline countdown missing');
+        const audio = new AudioContext();
+        try {
+          return (await audio.decodeAudioData(await response.arrayBuffer())).duration;
+        } finally { await audio.close(); }
+      });
+      assert.ok(offlineCountdown > .15 && offlineCountdown < 1.05);
       assert.deepEqual(errors, []);
       await page.screenshot({path:`test-results/${name.toLowerCase()}-voice-320.png`});
     } finally {
