@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { createServer } from '../../scripts/serve.mjs';
 for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit })) {
-  test(`${name} voice: actual MP3 decode, gesture playback, mute, background and offline`, async () => {
+  test(`${name} voice: all scene and countdown MP3s, gesture playback, mute, background and offline`, async () => {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}/mi-tsuketa/`;
@@ -63,6 +63,25 @@ for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit }
         assert.ok(clip.peak > .01 && clip.peak < 1, JSON.stringify(clip));
         if (clip.cue === 'peek') assert.ok(clip.duration < 1.6);
         if (clip.cue === 'returned') assert.ok(clip.duration < .9);
+      }
+      const countdown = await page.evaluate(async () => {
+        const manifest = await (await fetch('./assets/voices/countdown-manifest.json')).json();
+        const context = new AudioContext();
+        try {
+          return await Promise.all(manifest.clips.map(async clip => {
+            const response = await fetch('./' + clip.file);
+            if (!response.ok) throw new Error('missing ' + clip.file);
+            const buffer = await context.decodeAudioData(await response.arrayBuffer());
+            let peak = 0;
+            for (const sample of buffer.getChannelData(0)) peak = Math.max(peak, Math.abs(sample));
+            return { seconds:clip.remainingSeconds, duration:buffer.duration, peak };
+          }));
+        } finally { await context.close(); }
+      });
+      assert.equal(countdown.length,60);
+      for (const clip of countdown) {
+        assert.ok(clip.peak > .01 && clip.peak < 1);
+        assert.ok(clip.duration > .15 && clip.duration < (clip.seconds <= 10 ? 1.05 : 4.5));
       }
       await page.waitForFunction(() => navigator.serviceWorker.controller, null, {timeout:30000});
       // WebKit's setOffline kills even local Service Worker responses:
