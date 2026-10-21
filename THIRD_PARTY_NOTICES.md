@@ -18,3 +18,7 @@ VOICEVOX CORE 0.17.0・voicevox_vvm 0.16.4で生成した合成音声です。
 - https://zunko.jp/con_ongen_kiyaku.html
 
 モデルやエンジンそのものは配布していません。生成設定と文言は `assets/voices/manifest.json`、再生成手順は `docs/voices.md` を参照してください。
+
+## 楽しいカウントダウン（assets/voices/countdown）
+追加生成音声も VOICEVOX:四国めたん / VOICEVOX:ずんだもん のクレジット・音声ライブラリ利用規約に従います。
+生成に使用したENGINE version / Dockerイメージ / 60音声の台詞・SHA-256・長さは `assets/voices/countdown-manifest.json` に記録しています。実行時に音声エンジンや外部APIは利用しません。
