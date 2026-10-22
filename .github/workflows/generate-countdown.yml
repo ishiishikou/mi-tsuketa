@@ -54,7 +54,7 @@ jobs:
           manifest=json.loads(Path('assets/voices/countdown-manifest.json').read_text())
           from os import environ
           assert len(manifest['clips']) == (63 if environ['GITHUB_REF_NAME'] == 'fix/countdown-finish-cue-29' else 60)
-          assert len({c['file'] for c in manifest['clips']}) == 60
+          assert len({c['file'] for c in manifest['clips']}) == len(manifest['clips'])
           PY
       - name: Commit generated offline assets to feature branch
         run: |
