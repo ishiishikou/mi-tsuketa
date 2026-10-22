@@ -64,7 +64,7 @@ test("all characters have complete reactions, with daylight darkness distinct fr
     g.phase = "waiting-to-seek";
     assert.equal(gamePresentation(g, key).quiet, true);
     g.faceMissingConfirmed = true;
-    assert.equal(gamePresentation(g, key).text, "…", "waiting stays quiet");
+    assert.match(gamePresentation(g, key).text, /もういいよ！.*めを あけて/, "waiting tells the child when to open eyes");
   }
   assert.match(NIGHT_MESSAGE, /夜/);
 });
