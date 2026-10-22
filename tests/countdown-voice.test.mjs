@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { SceneVoice, countdownVoiceCue, gameVoiceCue } from '../voice.mjs';
+import { gamePresentation } from '../characters.mjs';
 
 function counting({ target = 10000, elapsed = 0, round = 0, ...overrides } = {}) {
   return { active: true, phase: 'counting', roundIndex: round, facePresent: true,
@@ -113,4 +114,13 @@ test('finished countdown speaks once at the actual completion, invites opening, 
   sound.sync(g,'rabbit');
   assert.equal(stopped.length,4,'missing face silences finished prompt');
   assert.equal(gameVoiceCue(g),null);
+});
+
+test('completed countdown instructs opening the eyes rather than showing silent ellipsis', () => {
+  const g=counting({target:10000,elapsed:10000,phase:'waiting-to-seek',previousEligible:false});
+  const message=gamePresentation(g,'rabbit').text;
+  assert.match(message,/もういいよ/);
+  assert.match(message,/めを あけて/);
+  assert.match(message,/さがしてね/);
+  assert.notEqual(message,'…');
 });
