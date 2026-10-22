@@ -9,7 +9,7 @@ export function gamePresentation(game, character) {
   const info = CHARACTERS[character];
   if (game.phase === "resting") return { motion: "sleep", text: "…", quiet: true };
   if (!game.active) return { motion: "still", text: "つづきは カメラを さいかいしてね。" };
-  if (game.phase === "waiting-to-seek") return { motion: "hidden", text: "…", quiet: true };
+  if (game.phase === "waiting-to-seek") return { motion: "hidden", text: "もういいよ！ めを あけて さがしてね！", quiet: true };
   if (game.faceMissingConfirmed) return { motion: "looking", text: "いなくなっちゃった。おかおを みせてね。" };
   if (game.reaction?.kind === "returned") return { motion: "hello", text: info.returned };
   if (game.reaction?.kind === "peek") return { motion: "peek", text: info.peek };
