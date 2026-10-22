@@ -66,10 +66,10 @@ test('countdown pauses immediately, resumes without repeating a previously spoke
   assert.match(requested.at(-1), /countdown\/cat\/15\.mp3$/);
 });
 
-test('all 60 authored countdown sounds have checked integrity and short final-ten timing', async () => {
+test('all 63 authored countdown and completion sounds have checked integrity and short final-ten timing', async () => {
   const manifest = JSON.parse(await readFile(new URL('../assets/voices/countdown-manifest.json',import.meta.url)));
   assert.equal(manifest.clips.length,63);
-  assert.equal(new Set(manifest.clips.map(c=>c.file)).size,60);
+  assert.equal(new Set(manifest.clips.map(c=>c.file)).size,63);
   for (const animal of ['rabbit','bear','cat']) {
     assert.equal(manifest.clips.filter(c=>c.character===animal).length,21);
   }
