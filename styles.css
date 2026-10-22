@@ -135,7 +135,7 @@ body:has(#cameraBubble:not([hidden])) .app { padding-top: 39px; }
 [data-quiet="true"] .forest { filter: saturate(.6); }
 [data-quiet="true"] :is(.game-clock, .game-progress) { opacity: .35; }
 [data-quiet="true"] *, [data-quiet="true"] *::before, [data-quiet="true"] *::after { animation: none !important; transition: none !important; }
-[data-phase="waiting-to-seek"] .game-instruction { color: #9aa48b; background: #f4f4ea; }
+[data-phase="waiting-to-seek"] .game-instruction { color: #285039; background: #edf7e6; font-weight: 900; }
 [data-phase="seeking"] :is(.game-clock, .game-progress), [data-phase="found"] :is(.game-clock, .game-progress) { display: none; }
 [data-phase="seeking"] .forest { height: clamp(270px, 72vw, 340px); }
 [data-phase="seeking"] .hiding-choices { bottom: 20px; }

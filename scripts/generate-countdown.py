@@ -32,9 +32,14 @@ def request(base, path, body=None, params=None):
         return r.read()
 
 def duration(path):
-    return float(subprocess.check_output([
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", str(path)]))
+    try:
+        return float(subprocess.check_output([
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", str(path)]))
+    except FileNotFoundError:
+        # Hosted minimal runners may lack ffprobe; mutagen reads the actual MP3.
+        from mutagen.mp3 import MP3
+        return float(MP3(str(path)).info.length)
 
 def encode(wav, mp3, speedup=1.0):
     filters = ([] if speedup <= 1.001 else [f"atempo={speedup:.4f}"])
@@ -46,21 +51,31 @@ def encode(wav, mp3, speedup=1.0):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--endpoint", default="http://127.0.0.1:50021")
+    parser.add_argument('--finish-only', action='store_true', help='append three completion prompts without rebuilding the 60 existing clips')
     args = parser.parse_args()
     with urlopen(args.endpoint.rstrip("/") + "/version", timeout=30) as r:
         version = r.read().decode()
-    manifest = {"schemaVersion": 1, "engine": "VOICEVOX ENGINE", "engineVersion": version,
-        "dockerImage": os.environ.get("VOICEVOX_IMAGE", "voicevox/voicevox_engine:cpu-latest"),
-        "clips": []}
+    manifest_path = ROOT / 'assets/voices/countdown-manifest.json'
+    if args.finish_only:
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        if len([c for c in manifest['clips'] if c.get('cue', '').startswith('count-')]) != 60:
+            raise ValueError('Expected 60 existing countdown clips')
+        manifest['clips'] = [c for c in manifest['clips'] if c.get('cue') != 'done']
+    else:
+        manifest = {"schemaVersion": 1, "engine": "VOICEVOX ENGINE", "engineVersion": version,
+            "dockerImage": os.environ.get("VOICEVOX_IMAGE", "voicevox/voicevox_engine:cpu-latest"),
+            "clips": []}
     for animal, profile in CHARACTERS.items():
         dest = ROOT / "assets/voices/countdown" / animal
         dest.mkdir(parents=True, exist_ok=True)
-        for number in MILESTONES:
-            words = WORDS.get(number)
-            text = words if words else f"あと{number}秒！{CHEERS[(number // 5) % len(CHEERS)]}"
+        for number in (['done'] if args.finish_only else MILESTONES):
+            words = WORDS.get(number) if number != 'done' else None
+            text = ('もういいよ！めをあけて、さがしてね！' if number == 'done' else
+                    words if words else f"あと{number}秒！{CHEERS[(number // 5) % len(CHEERS)]}")
             query = json.loads(request(args.endpoint, "/audio_query",
                 params={"text": text, "speaker": profile["speaker"]}))
-            query["speedScale"] = 1.52 if number <= 10 else profile["speed"]
+            query["speedScale"] = (1.28 if number == 'done' else
+                                   1.52 if number <= 10 else profile["speed"])
             query["pitchScale"] = profile["pitch"]
             query["intonationScale"] = 1.05
             query["prePhonemeLength"] = .02
@@ -73,20 +88,22 @@ def main():
                 encode(wav, output)
                 seconds = duration(output)
                 # Short spoken numerals must fit inside the next 1-second boundary.
-                if number <= 10 and seconds > .94:
+                if number != 'done' and number <= 10 and seconds > .94:
                     encode(wav, output, min(4.0, seconds / .89))
                     seconds = duration(output)
-            if not .15 < seconds < (1.05 if number <= 10 else 4.5):
+            if not .15 < seconds < (4.5 if number == 'done' else 1.05 if number <= 10 else 4.5):
                 raise ValueError(f"Unexpected clip duration {animal}/{number}: {seconds:.3f}s")
             relative = output.relative_to(ROOT).as_posix()
-            manifest["clips"].append({"character": animal, "cue": f"count-{number}",
-                "remainingSeconds": number, "text": text, "credit": profile["credit"],
+            entry = {"character": animal, "cue": 'done' if number == 'done' else f"count-{number}",
+                "text": text, "credit": profile["credit"],
                 "speaker": profile["speaker"], "pitch": profile["pitch"],
                 "speed": query["speedScale"], "file": relative,
-                "duration": seconds, "sha256": hashlib.sha256(output.read_bytes()).hexdigest()})
+                "duration": seconds, "sha256": hashlib.sha256(output.read_bytes()).hexdigest()}
+            if number != 'done':
+                entry['remainingSeconds'] = number
+            manifest['clips'].append(entry)
             print(animal, number, text, seconds, flush=True)
-    target = ROOT / "assets/voices/countdown-manifest.json"
-    target.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 if __name__ == "__main__":
     main()

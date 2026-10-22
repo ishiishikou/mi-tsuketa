@@ -1,7 +1,7 @@
 name: Generate countdown voices
 on:
   push:
-    branches: [feat/playful-countdown-27]
+    branches: [feat/playful-countdown-27, fix/countdown-finish-cue-29]
     paths:
       - '.github/workflows/generate-countdown.yml'
       - 'scripts/generate-countdown.py'
@@ -9,7 +9,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: generate-countdown-voices
+  group: generate-countdown-voices-${{ github.ref_name }}-wheel
   cancel-in-progress: false
 jobs:
   synthesize:
@@ -19,12 +19,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Install and verify ffmpeg
+      - name: Install and verify bundled ffmpeg
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
-          ffmpeg -version | head -n 1
-          ffprobe -version | head -n 1
+          python3 -m venv "$RUNNER_TEMP/voice-tools"
+          "$RUNNER_TEMP/voice-tools/bin/pip" install --disable-pip-version-check imageio-ffmpeg==0.6.0 mutagen==1.47.0
+          FFMPEG=$("$RUNNER_TEMP/voice-tools/bin/python" -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')
+          ln -s "$FFMPEG" "$RUNNER_TEMP/voice-tools/bin/ffmpeg"
+          echo "$RUNNER_TEMP/voice-tools/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/voice-tools/bin/ffmpeg" -version | head -n 1
       - name: Start VOICEVOX CPU engine
         env:
           VOICEVOX_IMAGE: voicevox/voicevox_engine:cpu-latest
@@ -43,13 +45,18 @@ jobs:
         env:
           VOICEVOX_IMAGE: voicevox/voicevox_engine:cpu-latest
         run: |
-          python3 scripts/generate-countdown.py
+          if [[ "$GITHUB_REF_NAME" == "fix/countdown-finish-cue-29" ]]; then
+            python3 scripts/generate-countdown.py --finish-only
+          else
+            python3 scripts/generate-countdown.py
+          fi
           python3 - <<'PY'
           import json
           from pathlib import Path
           manifest=json.loads(Path('assets/voices/countdown-manifest.json').read_text())
-          assert len(manifest['clips']) == 60
-          assert len({c['file'] for c in manifest['clips']}) == 60
+          from os import environ
+          assert len(manifest['clips']) == (63 if environ['GITHUB_REF_NAME'] == 'fix/countdown-finish-cue-29' else 60)
+          assert len({c['file'] for c in manifest['clips']}) == len(manifest['clips'])
           PY
       - name: Commit generated offline assets to feature branch
         run: |
@@ -60,5 +67,5 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "assets: generate 60 playful countdown voices (#27)"
-            git push origin HEAD:refs/heads/feat/playful-countdown-27
+            git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
           fi

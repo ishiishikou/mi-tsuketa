@@ -1,6 +1,11 @@
 // Pre-recorded, same-origin speech. No microphone, runtime TTS or remote API.
 export function gameVoiceCue(game) {
-  if (!game || !game.active || ['counting', 'waiting-to-seek', 'resting'].includes(game.phase)) return null;
+  if (!game || !game.active || ['counting', 'resting'].includes(game.phase)) return null;
+  // The cue belongs to completed time, but must be silent if the face/signal is lost.
+  if (game.phase === 'waiting-to-seek') {
+    return game.facePresent && !game.signalStale
+      ? { clip: 'done', key: `${game.roundIndex}:done` } : null;
+  }
   if (game.faceMissingConfirmed) return { clip: 'missing', key: `missing:${game.faceMissingSince}` };
   if (game.signalStale) return null;
   if (game.reaction) return { clip: game.reaction.kind, key: `reaction:${game.reaction.id}` };
@@ -76,8 +81,10 @@ export class SceneVoice {
     // Only fixed internal identifiers can form a URL.
     const isCount = /^count-(?:[1-9]|10|15|20|25|30|35|40|45|50|55|60)$/.test(clip);
     if (!['rabbit', 'bear', 'cat'].includes(character) ||
-        (!isCount && !['greeting', 'pet', 'ready', 'peek', 'returned', 'found', 'dark', 'night', 'missing', 'seeking'].includes(clip))) return;
-    const filename = isCount
+        (!isCount && !['greeting', 'pet', 'ready', 'peek', 'returned', 'found', 'dark', 'night', 'missing', 'seeking', 'done'].includes(clip))) return;
+    const filename = clip === 'done'
+      ? `./assets/voices/countdown/${character}/done.mp3`
+      : isCount
       ? `./assets/voices/countdown/${character}/${clip.slice(6)}.mp3`
       : `./assets/voices/${character}/${clip === "peek" ? "noticed" : clip}.mp3`;
     try {
@@ -108,6 +115,9 @@ export class SceneVoice {
   }
 
   sync(game, character) {
+    // Finishing cue tells the child to open their eyes; keep it playing through
+    // the opening-eye transition instead of interrupting it with seeking speech.
+    if (game?.phase === 'seeking' && this.seen.has(`${character}:${game.roundIndex}:done`)) return;
     const count = countdownVoiceCue(game);
     // Between five-second milestones, let the current encouragement finish.
     // A pause, stale/unknown signal, or phase exit must still stop immediately.
