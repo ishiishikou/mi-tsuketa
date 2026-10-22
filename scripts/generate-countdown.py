@@ -32,9 +32,14 @@ def request(base, path, body=None, params=None):
         return r.read()
 
 def duration(path):
-    return float(subprocess.check_output([
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", str(path)]))
+    try:
+        return float(subprocess.check_output([
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", str(path)]))
+    except FileNotFoundError:
+        # Hosted minimal runners may lack ffprobe; mutagen reads the actual MP3.
+        from mutagen.mp3 import MP3
+        return float(MP3(str(path)).info.length)
 
 def encode(wav, mp3, speedup=1.0):
     filters = ([] if speedup <= 1.001 else [f"atempo={speedup:.4f}"])
