@@ -1,9 +1,13 @@
 // Pre-recorded, same-origin speech. No microphone, runtime TTS or remote API.
 export function gameVoiceCue(game) {
   if (!game || !game.active || ['counting', 'resting'].includes(game.phase)) return null;
+  // The cue belongs to completed time, but must be silent if the face/signal is lost.
+  if (game.phase === 'waiting-to-seek') {
+    return game.facePresent && !game.signalStale
+      ? { clip: 'done', key: `${game.roundIndex}:done` } : null;
+  }
   if (game.faceMissingConfirmed) return { clip: 'missing', key: `missing:${game.faceMissingSince}` };
   if (game.signalStale) return null;
-  if (game.phase === 'waiting-to-seek') return game.facePresent && !game.signalStale ? { clip: 'done', key: `${game.roundIndex}:done` } : null;
   if (game.reaction) return { clip: game.reaction.kind, key: `reaction:${game.reaction.id}` };
   if (['ready', 'seeking', 'found'].includes(game.phase)) {
     return { clip: game.phase, key: `${game.roundIndex}:${game.phase}` };
