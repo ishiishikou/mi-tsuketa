@@ -84,3 +84,9 @@ test('all spoken text has a versioned, nonempty asset and matching hash', async 
     if (clip.cue === 'peek') assert.ok(clip.duration < 1.6);
   }
 });
+
+test('waiting-to-seek completion voice only when face and fresh signal are present', () => {
+  assert.deepEqual(gameVoiceCue({active:true,phase:'waiting-to-seek',roundIndex:2,facePresent:true,signalStale:false}),{clip:'done',key:'2:done'});
+  assert.equal(gameVoiceCue({active:true,phase:'waiting-to-seek',roundIndex:2,facePresent:false,faceMissingConfirmed:true}),null);
+  assert.equal(gameVoiceCue({active:true,phase:'waiting-to-seek',roundIndex:2,facePresent:true,signalStale:true}),null);
+});
