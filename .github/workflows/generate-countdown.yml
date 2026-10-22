@@ -1,7 +1,7 @@
 name: Generate countdown voices
 on:
   push:
-    branches: [feat/playful-countdown-27]
+    branches: [feat/playful-countdown-27, fix/countdown-finish-cue-29]
     paths:
       - '.github/workflows/generate-countdown.yml'
       - 'scripts/generate-countdown.py'
@@ -43,12 +43,17 @@ jobs:
         env:
           VOICEVOX_IMAGE: voicevox/voicevox_engine:cpu-latest
         run: |
-          python3 scripts/generate-countdown.py
+          if [[ "$GITHUB_REF_NAME" == "fix/countdown-finish-cue-29" ]]; then
+            python3 scripts/generate-countdown.py --finish-only
+          else
+            python3 scripts/generate-countdown.py
+          fi
           python3 - <<'PY'
           import json
           from pathlib import Path
           manifest=json.loads(Path('assets/voices/countdown-manifest.json').read_text())
-          assert len(manifest['clips']) == 60
+          from os import environ
+          assert len(manifest['clips']) == (63 if environ['GITHUB_REF_NAME'] == 'fix/countdown-finish-cue-29' else 60)
           assert len({c['file'] for c in manifest['clips']}) == 60
           PY
       - name: Commit generated offline assets to feature branch
@@ -60,5 +65,5 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "assets: generate 60 playful countdown voices (#27)"
-            git push origin HEAD:refs/heads/feat/playful-countdown-27
+            git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
           fi
