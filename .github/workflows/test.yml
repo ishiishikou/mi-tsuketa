@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   game-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
   # Run sequentially to avoid concurrent browser-test resource contention.
   webkit-stability:
     name: WebKit regression (fresh VM ${{ matrix.attempt }}/3)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
