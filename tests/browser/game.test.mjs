@@ -395,7 +395,7 @@ for (const [name, type] of [["Chromium", chromium], ["WebKit", webkit]]) {
       assert.match(await page.locator("#gameInstruction").innerText(), /あ、いた/);
       await page.clock.runFor(8000);
       assert.equal(await page.locator("#gameCard").getAttribute("data-phase"), "waiting-to-seek");
-      assert.equal(await page.locator("#gameInstruction").innerText(), "…");
+      assert.match(await page.locator("#gameInstruction").innerText(), /もういいよ！.*めを あけて さがしてね/);
       assert.equal(await page.locator("#peekPhoto").isVisible(), false);
       assert.equal(await page.locator("#gameCard").evaluate(el => el.getAnimations({subtree:true}).filter(a => a.playState === "running").length), 0, "completed closure stays still");
       await sensor(page, { eye: "open" });

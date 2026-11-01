@@ -783,6 +783,42 @@
       "file": "assets/voices/countdown/cat/1.mp3",
       "duration": 0.48,
       "sha256": "4cb7b07309ba840e643b9e3a9dda0d330b574239f6aa008cb21b14f219401696"
+    },
+    {
+      "character": "rabbit",
+      "cue": "done",
+      "text": "もういいよ！めをあけて、さがしてね！",
+      "credit": "VOICEVOX:四国めたん",
+      "speaker": 0,
+      "pitch": 0.035,
+      "speed": 1.28,
+      "file": "assets/voices/countdown/rabbit/done.mp3",
+      "duration": 2.424,
+      "sha256": "b38ed1514b1817d1edb032bd42d57d27ea5e3467774bb1c05c523c9eb80c6b5a"
+    },
+    {
+      "character": "bear",
+      "cue": "done",
+      "text": "もういいよ！めをあけて、さがしてね！",
+      "credit": "VOICEVOX:ずんだもん",
+      "speaker": 1,
+      "pitch": -0.045,
+      "speed": 1.28,
+      "file": "assets/voices/countdown/bear/done.mp3",
+      "duration": 2.856,
+      "sha256": "291353affa250bd6543b6468af36b01656b3cd0240ea13dac900ba0dd892b68c"
+    },
+    {
+      "character": "cat",
+      "cue": "done",
+      "text": "もういいよ！めをあけて、さがしてね！",
+      "credit": "VOICEVOX:ずんだもん",
+      "speaker": 3,
+      "pitch": 0.045,
+      "speed": 1.28,
+      "file": "assets/voices/countdown/cat/done.mp3",
+      "duration": 2.568,
+      "sha256": "1421013ce6dd5cc8cca9b6377686fc061cde4319f5d29c94d99496af15fc420d"
     }
   ]
 }

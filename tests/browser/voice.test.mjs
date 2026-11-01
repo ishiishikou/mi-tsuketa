@@ -81,7 +81,7 @@ for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit }
           return decoded;
         } finally { await context.close(); }
       });
-      assert.equal(countdown.length,60);
+      assert.equal(countdown.length,63);
       for (const clip of countdown) {
         assert.ok(clip.peak > .01 && clip.peak < 1);
         assert.ok(clip.duration > .15 && clip.duration < (clip.seconds <= 10 ? 1.05 : 4.5));
@@ -113,6 +113,14 @@ for (const [name, type] of Object.entries({ Chromium: chromium, WebKit: webkit }
         } finally { await audio.close(); }
       });
       assert.ok(offlineCountdown > .15 && offlineCountdown < 1.05);
+      const finished = await page.evaluate(async () => {
+        const response = await fetch('./assets/voices/countdown/cat/done.mp3');
+        if (!response.ok) throw new Error('offline finish voice missing');
+        const context = new AudioContext();
+        try { return (await context.decodeAudioData(await response.arrayBuffer())).duration; }
+        finally { await context.close(); }
+      });
+      assert.ok(finished > .15 && finished < 4.5);
       assert.deepEqual(errors, []);
       await page.screenshot({path:`test-results/${name.toLowerCase()}-voice-320.png`});
     } finally {

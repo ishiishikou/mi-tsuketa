@@ -64,3 +64,9 @@ VOICEVOX:四国めたん / VOICEVOX:ずんだもん
 - 追加音声の作成環境はVOICEVOX ENGINEの公式CPU Dockerイメージ（生成時のversionは `assets/voices/countdown-manifest.json` に記録）。旧30本の音声を変更せず、実行時にDocker・外部TTSは不要。
 - GitHub Actions `Generate countdown voices` を専用ブランチへの更新で起動し、`python3 scripts/generate-countdown.py` で60本のMP3・SHA256・再生秒数を作成してブランチにコミットする。再生成は公式Dockerイメージを起動して同じスクリプトを実行。
 - iPhone実機では、10/15/20/30/45/60秒の全ラウンド、10→1の聞こえ方、途中開眼/閉眼再開、顔なし、音なし、ホーム画面版とオフライン再起動を確認する。子ども向けの発音・タイミング・音量は実機で評価する（自動テストだけで合格としない）。
+
+## カウント完了時の声かけ（Issue #29）
+
+閉眼時間が目標に達したら、うさちゃん・くまちゃん・ねこちゃんがそれぞれの声で「もういいよ！めをあけて、さがしてね！」と一度だけ伝え、画面にも同じ案内を表示する。最終の数字「1」は残り1秒で発話されるため、実際の計測完了を待ってからこの案内を出す。途中開眼のペナルティは維持し、完了前に探せるようにはしない。
+
+完了後も閉眼を続けた場合は従来どおり60秒で休息。案内音声の開始から終了までに開眼しても最後まで聞こえるよう、探索の音声を重複させない。カメラ中断/音なし/休息/画面非表示で停止。音声は既存VOICEVOX ENGINEで3本を事前生成（`python3 scripts/generate-countdown.py --finish-only`）、`assets/voices/countdown/{rabbit,bear,cat}/done.mp3` として同一オリジンに配信・PWAキャッシュする。生成・音源情報は `countdown-manifest.json` に記録し、iPhone実機の自然さは未確認。
